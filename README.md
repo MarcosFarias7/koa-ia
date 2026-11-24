@@ -1,99 +1,89 @@
-# Koa 🐨 — o coala que aprende conversando
+<div align="center">
 
-O Koa começa sem saber **nada** e aprende tudo com a conversa. Ele roda inteiro no navegador
-(feito pensando no Safari do iPhone), sem servidor e sem inteligência artificial externa:
-tudo o que ele aprende fica guardado **só no aparelho**.
+<img src="icons/icon-192.png" alt="Ícone do Koa" width="112">
 
-## Como ensinar o Koa
+# Koa 🐨
+
+**Um coala que nasce sem saber nada e aprende tudo conversando com você.**
+
+Web app em JavaScript puro, sem servidor e sem dependências para instalar, feito para o Safari do iPhone.
+
+[![Abrir o Koa](https://img.shields.io/badge/abrir_o_Koa-online-3f8a62?style=for-the-badge&logo=github)](https://marcosfarias7.github.io/koa-ia/)
+
+![JavaScript](https://img.shields.io/badge/JavaScript-puro-f7df1e?logo=javascript&logoColor=black)
+![Three.js](https://img.shields.io/badge/Three.js-3D-000000?logo=threedotjs)
+![PWA](https://img.shields.io/badge/PWA-offline-5a0fc8?logo=pwa)
+![Testes](https://img.shields.io/badge/testes-44_passando-3f8a62)
+
+<br>
+
+<img src="docs/conversa.jpg" alt="Conversa com o Koa" width="240">&nbsp;&nbsp;
+<img src="docs/mundo-dia.jpg" alt="O mundo 3D do Koa de dia" width="240">&nbsp;&nbsp;
+<img src="docs/mundo-noite.jpg" alt="O mundo 3D do Koa à noite" width="240">
+
+</div>
+
+---
+
+## ✨ O que ele faz
+
+- 🧠 **Aprende conversando.** Entende frases como "o céu é azul", "meu nome é Ana" ou "eu gosto de chocolate" e guarda tudo na memória.
+- 🤔 **Pergunta quando não sabe.** Se você perguntar algo novo, ele pede para você ensinar, e a próxima resposta vira conhecimento.
+- ✏️ **Aceita correção.** "Não, na verdade é verde" atualiza o que ele sabia e ele agradece.
+- 💬 **Pega o seu jeito de falar.** Aos poucos, passa a usar as expressões, as risadas e os emojis que você mais usa.
+- 🌱 **Tem um mundo 3D que cresce.** Ele mora numa ilha flutuante com um pé de eucalipto. Nasce uma flor a cada coisa aprendida e uma borboleta a cada 10.
+- 🌗 **O céu segue o relógio.** De dia é azul, no entardecer fica laranja e à noite aparecem estrelas e vaga-lumes.
+- 🏆 **Sobe de nível.** Começa como "Bebê coala" e vai subindo aos 10, 25, 50, 100... aprendizados, com comemoração a cada nível.
+- 📚 **Mostra o que sabe.** Numa tela própria dá para buscar, editar, apagar, exportar e importar a memória dele.
+- 📱 **Vira app no celular.** Instala na Tela de Início do iPhone e funciona sem internet.
+- ✨ **Tem um cérebro avançado opcional.** Com uma chave da API do Claude, ele fala de forma mais natural, mas continua usando só o que aprendeu com você.
+
+## 🗣️ Como ensinar
 
 | Você diz | O Koa aprende |
 |---|---|
-| `o céu é azul` · `gatos são animais` · `o gato tem bigode` | fatos sobre coisas |
-| `meu nome é Ana` · `me chamo Ana` · `minha cor favorita é verde` | coisas sobre você |
+| `o céu é azul` · `gatos são animais` · `o gato tem bigode` | fatos sobre o mundo |
+| `meu nome é Ana` · `minha cor favorita é verde` | coisas sobre você |
 | `eu gosto de chocolate e pizza` · `eu moro em Curitiba` | seus gostos e sua vida |
 | `você é fofo` | coisas sobre ele mesmo |
 | `não, na verdade é verde` · `o gato não é preto, é branco` | correções |
-| `esquece o gato` | apaga um assunto |
+| `esquece o gato` | apagar um assunto |
 
-Perguntas: `o que é um gato?`, `qual é o meu nome?`, `do que eu gosto?`, `onde fica Paris?`,
-`o que você sabe sobre mim?`, `quem é você?`. Se ele não souber, pergunta de volta e a sua
-próxima resposta vira conhecimento. De vez em quando ele também faz perguntas curiosas e
-começa a usar palavras, risadas e emojis que você costuma usar.
+Depois pergunte: `o que é um gato?`, `qual é o meu nome?`, `do que eu gosto?`, `o que você sabe sobre mim?`. Ele também entende pequenos erros de digitação.
 
-O livrinho no canto de cima abre **"O que o Koa sabe"**: lá dá para editar, apagar, exportar
-um backup `.json`, importar e esquecer tudo.
+## 📲 Usar no iPhone
 
-## O mundinho 3D
+1. Abra **[marcosfarias7.github.io/koa-ia](https://marcosfarias7.github.io/koa-ia/)** no **Safari**.
+2. Toque em **Compartilhar** (o quadrado com a seta) e depois em **Adicionar à Tela de Início**.
+3. Pronto: o Koa abre em tela cheia, como um app, e funciona sem internet.
 
-O Koa mora numa ilha flutuante com um pé de eucalipto, laguinho, nuvens e folhas caindo.
-O céu segue a hora do aparelho: dia, entardecer e noite com estrelas e vaga-lumes.
-O mundo **cresce** conforme ele aprende: nasce uma florzinha por coisa aprendida, e a cada
-10 coisas aparece uma borboleta.
+## 🔒 Privacidade
 
-- Arraste no mundo para girar. Toque no Koa e ele fica feliz.
-- O botão ⛶ no canto abre o mundo em tela cheia, com zoom de pinça. O ✕ volta para a conversa.
-- O mundo usa a biblioteca Three.js. Na primeira vez, ela vem da internet e depois fica guardada
-  para funcionar offline. Sem WebGL, ou na primeira visita sem internet, aparece o coala 2D.
+O Koa não tem servidor, então o que você ensina fica guardado só no seu aparelho. O botão **Exportar** cria um backup em `.json`.
+O cérebro avançado é opcional. Quando você liga, as mensagens vão só para `api.anthropic.com`, e a chave nunca entra no backup.
 
-## Cérebro avançado (opcional)
+## 🛠️ Como funciona por dentro
 
-O botão ✨ no topo abre as configurações. Com uma chave da API do Claude, o Koa **continua
-aprendendo do mesmo jeito** (tudo local), mas a resposta é reescrita pelo Claude para soar mais
-natural. O Claude só pode usar o que o Koa aprendeu, então o coala continua "sem saber nada" além
-do que foi ensinado.
+| Arquivo | O que faz |
+|---|---|
+| [`brain.js`](brain.js) | O cérebro: extrai fatos com regras em português, guarda a memória, faz busca aproximada (Levenshtein), trata correções, faz perguntas curiosas e aprende o jeito de falar da pessoa |
+| [`world3d.js`](world3d.js) | O mundo 3D com Three.js: ilha, eucalipto, céu que muda com a hora, o coala 3D com as expressões e o jardim que cresce |
+| [`koala.svg.js`](koala.svg.js) | O coala 2D em SVG, usado quando o 3D não está disponível |
+| [`app.js`](app.js) | A interface: conversa, balão com efeito de digitação, níveis, tela de memória e ajuste ao teclado do iPhone |
+| [`llm.js`](llm.js) | O cérebro avançado opcional, que chama a API do Claude |
+| [`sw.js`](sw.js) | O service worker que faz o app funcionar offline |
 
-1. Crie uma chave em <https://console.anthropic.com> (em **API Keys**) e defina um **limite de gastos** baixo.
-2. No Koa: ✨ → cole a chave → **Testar** → marque "Usar o cérebro avançado" → **Salvar**.
-3. Modelos: Opus 5.5 (padrão, mais esperto), Sonnet 5.5 ou Haiku 5.5 (mais barato).
-
-Privacidade: a chave fica só no aparelho e só é enviada para `api.anthropic.com`, junto com a
-memória do Koa e as últimas mensagens. O backup exportado não inclui a chave. Sem chave, sem
-internet ou se a API falhar, o Koa responde com o cérebro local.
-
-## Rodar no computador
+## 💻 Rodar no computador
 
 ```bash
-cd koa-coala
-python -m http.server 8140
+git clone https://github.com/MarcosFarias7/koa-ia.git
+cd koa-ia
+python -m http.server 8140      # depois abra http://localhost:8140
+node tests/brain.test.js        # 44 testes do cérebro, sem dependências
 ```
 
-Abra <http://localhost:8140>. Testes do cérebro (sem dependências):
+---
 
-```bash
-node tests/brain.test.js
-```
-
-## Publicar de graça
-
-**Netlify (mais fácil):** entre em <https://app.netlify.com/drop> e arraste a pasta `koa-coala`.
-Pronto, você recebe um link `https://...netlify.app`.
-
-**GitHub Pages:** crie um repositório, envie os arquivos desta pasta e ative
-*Settings → Pages → Deploy from branch → main / (root)*.
-
-> Precisa ser `https` para funcionar offline e virar app no iPhone. Os dois jeitos acima já dão isso.
-
-## Colocar na Tela de Início do iPhone
-
-1. Abra o link no **Safari**.
-2. Toque em **Compartilhar** (quadrado com a seta para cima).
-3. Escolha **Adicionar à Tela de Início** → **Adicionar**.
-
-O Koa abre em tela cheia, como um app, e funciona mesmo sem internet.
-
-> A memória fica no Safari daquele aparelho. Se apagar os dados do site, ou passar semanas sem
-> abrir, o iOS pode limpar. Use **Exportar** de vez em quando para guardar um backup.
-
-## Arquivos
-
-- `index.html`: a página
-- `style.css`: visual e animações do coala
-- `app.js`: a interface (conversa, balão, nível, memória, teclado do iPhone)
-- `brain.js`: o cérebro (extrair fatos, memória, busca aproximada, respostas, curiosidade, estilo)
-- `world3d.js`: o mundinho 3D (ilha, eucalipto, céu, coala 3D, flores que crescem)
-- `llm.js`: cérebro avançado opcional (chamada à API do Claude)
-- `koala.svg.js`: o desenho do coala e os estados (parado, pensando, feliz, curioso, confuso)
-- `sw.js`: deixa o app funcionar offline (ao mudar arquivos, troque a `VERSION`)
-- `manifest.webmanifest` e `icons/`: configuração de app (PWA)
-- `tools/make-icons.js`: gera os ícones (`node tools/make-icons.js`)
-- `tests/brain.test.js`: testes
+<div align="center">
+Feito com 💚 por <a href="https://github.com/MarcosFarias7">Marcos Farias</a>, com a ajuda do Claude Code.
+</div>
