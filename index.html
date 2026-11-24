@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Koa</title>
+  <meta name="description" content="Koa, um coala que aprende conversando com você.">
+  <meta name="theme-color" content="#e4efe6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15201a" media="(prefers-color-scheme: dark)">
+  <!-- Apple / PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Koa">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="top">
+      <div class="level" id="level" aria-live="polite">
+        <div class="level-line">
+          <span class="level-name" id="levelName">Nível 1 · Bebê coala</span>
+          <span id="levelCount">0 coisas</span>
+        </div>
+        <div class="level-bar" role="progressbar" aria-label="Progresso até o próximo nível" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="levelBar">
+          <div class="level-fill" id="levelFill"></div>
+        </div>
+      </div>
+      <button class="icon-btn" id="btnSettings" type="button" aria-label="Cérebro avançado (configurações)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/>
+        </svg>
+        <span class="dot-on" id="llmDot" hidden></span>
+      </button>
+      <button class="icon-btn" id="btnMemory" type="button" aria-label="O que o Koa sabe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 19.5V5a2 2 0 0 1 2-2h13v16H6.5A2.5 2.5 0 0 0 4 21.5v-2z"/><path d="M8 7h7M8 11h5"/>
+        </svg>
+      </button>
+    </header>
+
+    <section class="stage" id="stage" data-mood="idle" aria-label="Koa">
+      <div class="koala-wrap" id="koala"></div>
+      <div class="bubble" id="bubble" aria-live="polite" aria-atomic="true"></div>
+    </section>
+
+    <main class="chat" id="chat" aria-label="Histórico da conversa" tabindex="-1"></main>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <label for="input" class="sr-only">Mensagem para o Koa</label>
+      <input id="input" type="text" enterkeyhint="send" autocomplete="off" autocorrect="on" autocapitalize="sentences"
+             spellcheck="true" maxlength="500" placeholder="Ensine algo ao Koa…">
+      <button class="send-btn" id="send" type="submit" aria-label="Enviar" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h13M13 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+
+  <!-- Tela "O que o Koa sabe" -->
+  <dialog class="sheet" id="memory" aria-labelledby="memTitle">
+    <div class="sheet-head">
+      <div style="flex:1;min-width:0">
+        <h2 id="memTitle">O que o Koa sabe</h2>
+        <p class="sheet-sub" id="memSub">0 coisas</p>
+      </div>
+      <button class="icon-btn" id="btnClose" type="button" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-search">
+      <label for="memSearch" class="sr-only">Buscar na memória</label>
+      <input id="memSearch" type="search" placeholder="Buscar…" autocomplete="off">
+    </div>
+    <ul class="facts" id="facts"></ul>
+    <div class="sheet-foot">
+      <button class="btn" id="btnExport" type="button">Exportar</button>
+      <button class="btn" id="btnImport" type="button">Importar</button>
+      <button class="btn danger" id="btnForget" type="button">Esquecer tudo</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </dialog>
+
+  <!-- Cérebro avançado (opcional) -->
+  <dialog class="sheet" id="settings" aria-labelledby="setTitle">
+    <div class="sheet-head">
+      <div style="flex:1;min-width:0">
+        <h2 id="setTitle">Cérebro avançado ✨</h2>
+        <p class="sheet-sub">Opcional. Sem isso, o Koa funciona normalmente.</p>
+      </div>
+      <button class="icon-btn" id="btnSetClose" type="button" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <form class="settings" id="setForm" autocomplete="off">
+      <p class="note">Com uma chave da API do Claude, o Koa continua aprendendo do mesmo jeito, mas <b>fala de forma mais natural</b>. Ele só usa o que aprendeu com você.</p>
+
+      <label class="switch">
+        <input type="checkbox" id="setEnabled">
+        <span>Usar o cérebro avançado</span>
+      </label>
+
+      <label for="setKey" class="field-label">Chave da API (começa com <code>sk-ant-</code>)</label>
+      <input id="setKey" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…">
+
+      <label for="setModel" class="field-label">Modelo</label>
+      <select id="setModel"></select>
+
+      <p class="status" id="setStatus" role="status" aria-live="polite"></p>
+
+      <div class="row">
+        <button type="button" class="btn" id="btnTest">Testar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+        <button type="button" class="btn danger" id="btnRemoveKey">Remover chave</button>
+      </div>
+
+      <details class="note">
+        <summary>Privacidade e custo</summary>
+        <p>A chave fica guardada só neste aparelho e é enviada apenas para <code>api.anthropic.com</code>. A cada mensagem, o Koa envia o que aprendeu e as últimas mensagens da conversa para a API do Claude. O backup exportado <b>não</b> inclui a chave.</p>
+        <p>O uso da API é cobrado na conta dona da chave. Crie a chave em <b>console.anthropic.com</b> e defina um limite de gastos baixo. Quem mexer no celular desbloqueado consegue ver a chave.</p>
+      </details>
+    </form>
+  </dialog>
+
+  <div class="celebrate" id="celebrate" aria-hidden="true"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="brain.js"></script>
+  <script src="koala.svg.js"></script>
+  <script src="llm.js"></script>
+  <script src="app.js"></script>
+  <!-- mundo 3D (se não carregar, o coala 2D continua) -->
+  <script type="module" src="world3d.js"></script>
+</body>
+</html>
