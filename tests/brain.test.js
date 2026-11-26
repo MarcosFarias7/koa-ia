@@ -253,6 +253,101 @@ test('cumprimento usa o nome da pessoa', () => {
   assert.match(ask(b, 'oi koa!'), /Oi, Ana/);
 });
 
+console.log('\nRaciocínio e autonomia');
+test('ações sem complemento: "o gato mia"', () => {
+  const b = brain();
+  b.respond('o gato mia');
+  assert.equal(b.facts[0].rel, 'ação');
+  assert.match(ask(b, 'o que é o gato?'), /gato mia/i);
+  assert.match(ask(b, 'quem mia?'), /O gato mia/);
+});
+test('mais verbos: pode, precisa, tem medo de', () => {
+  const b = brain();
+  b.respond('o pássaro pode voar');
+  b.respond('a planta precisa de água');
+  b.respond('o rato tem medo de gato');
+  assert.equal(b.count, 3);
+  assert.match(ask(b, 'o que é a planta?'), /precisa de água/);
+});
+test('deduz sozinho: gato é animal + animal respira → gato respira', () => {
+  const b = brain();
+  b.respond('o gato é um animal');
+  const r = b.respond('animal respira');
+  assert.match(r.text, /pensei sozinho|Descobri sozinho/);
+  assert.match(ask(b, 'o gato respira?'), /Acho que sim/);
+  assert.equal(b.deductions().length, 1);
+  assert.equal(b.count, 2, 'dedução não conta como fato ensinado');
+});
+test('dedução responde pergunta sem fato direto', () => {
+  const b = brain();
+  b.respond('o gato é um animal');
+  b.respond('animal tem coração');
+  assert.match(ask(b, 'o que o gato tem?'), /pensei sozinho.*gato tem coração/);
+});
+test('busca reversa: "quem tem bigode?" e "o que é azul?"', () => {
+  const b = brain();
+  b.respond('o gato tem bigode');
+  b.respond('o céu é azul');
+  assert.match(ask(b, 'quem tem bigode?'), /O gato tem bigode/);
+  assert.match(ask(b, 'o que é azul?'), /o céu é azul/);
+});
+test('pergunta "quem late?" e aprende com a resposta', () => {
+  const b = brain();
+  assert.match(ask(b, 'quem late?'), /Me conta/);
+  b.respond('o cachorro');
+  assert.match(ask(b, 'quem late?'), /cachorro late/);
+});
+test('frase solta sobre algo conhecido vira anotação', () => {
+  const b = brain();
+  b.respond('o gato é um animal');
+  const r = b.respond('ontem o gato pulou no sofá da sala');
+  assert.ok(r.learned);
+  assert.equal(b.facts[1].rel, 'nota');
+});
+test('opiniões: gostos inatos, por fatos e estáveis', () => {
+  const b = brain();
+  assert.match(ask(b, 'você gosta de eucalipto?'), /AMO/);
+  assert.match(ask(b, 'você gosta de fogo?'), /não gosto/);
+  b.respond('o hamster é fofo');
+  assert.match(ask(b, 'você gosta do hamster?'), /Gosto sim/);
+  b.respond('a barata é nojenta');
+  assert.match(ask(b, 'você gosta de barata?'), /não muito/);
+  assert.equal(ask(b, 'o que você acha de cenoura?'), ask(b, 'o que você acha de cenoura?'));
+});
+test('contas, hora e data', () => {
+  const b = brain();
+  assert.match(ask(b, 'quanto é 2+3*4?'), /14/);
+  assert.match(ask(b, '10 dividido por 4'), /2,5/);
+  assert.match(ask(b, '5/0'), /zero/);
+  assert.match(ask(b, 'que horas são?'), /\d\d:\d\d/);
+  assert.match(ask(b, 'que dia é hoje?'), /Hoje é/);
+});
+test('humor do dia responde "como você está?"', () => {
+  const b = brain();
+  assert.match(ask(b, 'como você está?'), /^Tô/);
+});
+test('puxa assunto sozinho', () => {
+  const b = brain();
+  const vazio = b.initiative();
+  assert.match(vazio.text, /ensina|conta/);
+  b.respond('o gato é um animal');
+  b.respond('animal respira');
+  const seen = new Set();
+  for (let i = 0; i < 6; i++) {
+    const r = b.initiative({ activity: i === 0 ? { type: 'pond', at: 1 } : null });
+    if (r) seen.add(r.text);
+  }
+  assert.ok(seen.size >= 3, 'deveria variar as iniciativas');
+});
+test('cumprimento lembra do tempo longe', () => {
+  let t = Date.now();
+  const b = brain({ now: () => t });
+  b.respond('meu nome é Ana');
+  t += 3 * 86400000;
+  assert.match(b.greeting(), /saudade, Ana.*3 dias/);
+  assert.match(b.greeting(), /rapidinho/);
+});
+
 console.log('\nNível, estilo, persistência');
 test('sobe de nível no marco de 10', () => {
   const b = brain();

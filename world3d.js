@@ -218,9 +218,10 @@ function start() {
 
   const sph = (r, seg = 20) => new THREE.SphereGeometry(r, seg, Math.round(seg * 0.75));
   const koala = new THREE.Group();
-  koala.position.set(0.95, BRANCH_Y + 0.12, 0.25);
-  tree.add(koala);
-  const koalaBase = koala.position.clone();
+  // o Koa vive solto no mundo; começa sentado no galho
+  const koalaHome = new THREE.Vector3(tree.position.x + 0.95, BRANCH_Y + 0.12, tree.position.z + 0.25);
+  koala.position.copy(koalaHome);
+  world.add(koala);
 
   const body = mesh(sph(0.5), fur, 0, 0.45, 0);
   body.scale.set(1, 1.12, 0.9);
@@ -473,7 +474,6 @@ function start() {
     // foca no Koa no palco pequeno; na tela cheia mostra a ilha inteira
     const kp = new THREE.Vector3();
     scene.updateMatrixWorld(true);
-    koalaBase && koala.position.copy(koalaBase);
     koala.getWorldPosition(kp);
     if (full) {
       target.set(0, 1.6, 0);
@@ -615,6 +615,217 @@ function start() {
     }
   }).observe(stage, { attributes: true, attributeFilter: ['data-mood'] });
 
+  // ---------------------------------------------------------------- vida própria
+  // Quando ninguém está conversando, o Koa desce da árvore, passeia, cheira flores,
+  // bebe água no laguinho, olha o céu e tira sonecas (mais à noite). Quando a pessoa
+  // volta a digitar, ele sobe de novo no galho para conversar.
+  const zzz = emojiSprite('💤', 0.4);
+  zzz.position.set(0.45, 1.5, 0.2);
+  koala.add(zzz);
+  const POND = new THREE.Vector3(2.7, 0, 1.7);
+  const TRUNK = new THREE.Vector3(tree.position.x, 0, tree.position.z);
+  const LANDING = new THREE.Vector3(0.75, 0, -0.25);
+
+  function validSpot(x, z) {
+    if (Math.hypot(x, z) > 4.9) return false;
+    if (Math.hypot(x - POND.x, z - POND.z) < 1.85) return false;
+    if (Math.hypot(x - TRUNK.x, z - TRUNK.z) < 0.85) return false;
+    return true;
+  }
+  function pathOK(a, b) {
+    for (let s = 0.1; s <= 1.001; s += 0.1) if (!validSpot(a.x + (b.x - a.x) * s, a.z + (b.z - a.z) * s)) return false;
+    return true;
+  }
+
+  const life = { mode: 'branch', to: new THREE.Vector3(), from: new THREE.Vector3(), jumpT: 0, then: null, activity: null, timer: 6 + Math.random() * 6, heading: 0, faceCamera: true };
+  let lastTalk = performance.now();
+  const markTalk = () => (lastTalk = performance.now());
+  const inputEl = document.getElementById('input');
+  if (inputEl) {
+    inputEl.addEventListener('focus', markTalk);
+    inputEl.addEventListener('input', markTalk);
+  }
+  new MutationObserver(() => {
+    if (stage.dataset.mood === 'thinking') markTalk();
+  }).observe(stage, { attributes: true, attributeFilter: ['data-mood'] });
+
+  function emitActivity(type, extra) {
+    window.dispatchEvent(new CustomEvent('koa:activity', { detail: Object.assign({ type }, extra || {}) }));
+  }
+  function face(p) {
+    life.heading = Math.atan2(p.x - koala.position.x, p.z - koala.position.z);
+    life.faceCamera = false;
+  }
+  function jump(to, then) {
+    life.mode = 'jump';
+    life.from.copy(koala.position);
+    life.to.copy(to);
+    life.jumpT = 0;
+    life.then = then;
+    face(to);
+  }
+  function walkTo(p, then) {
+    if (!pathOK(koala.position, p)) {
+      // caminho bloqueado (lago ou tronco): contorna por um ponto no meio do caminho
+      let best = null;
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        for (const r of [1.6, 2.6, 3.6]) {
+          const w = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+          if (!validSpot(w.x, w.z) || !pathOK(koala.position, w) || !pathOK(w, p)) continue;
+          const len = koala.position.distanceTo(w) + w.distanceTo(p);
+          if (!best || len < best.len) best = { w, len };
+        }
+      }
+      if (!best) return jump(p, then);
+      return walkTo(best.w, () => walkTo(p, then));
+    }
+    life.mode = 'walk';
+    life.to.set(p.x, 0, p.z);
+    life.then = then;
+    life.faceCamera = false;
+  }
+  function startDo(activity, time) {
+    life.mode = 'do';
+    life.activity = activity;
+    life.timer = time;
+  }
+  function rest(sec) {
+    life.mode = 'idle';
+    life.activity = null;
+    life.timer = sec;
+    life.faceCamera = true;
+  }
+  function randomSpot() {
+    for (let i = 0; i < 25; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 1 + Math.random() * 3.8;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (validSpot(x, z)) return new THREE.Vector3(x, 0, z);
+    }
+    return null;
+  }
+  function goHome(emit) {
+    if (life.mode === 'branch' || life.mode === 'jump') return;
+    life.activity = null;
+    const up = () => jump(koalaHome, () => {
+      life.mode = 'branch';
+      life.faceCamera = true;
+      life.timer = 10 + Math.random() * 10;
+      if (emit) emitActivity('tree');
+    });
+    if (koala.position.distanceTo(LANDING) > 0.25) walkTo(LANDING, up);
+    else up();
+  }
+  function chooseActivity() {
+    if (life.mode === 'branch') return jump(LANDING, () => rest(0.8)); // desce da árvore
+    const r = Math.random();
+    if (phase === 'night' && r < 0.6) {
+      const spot = new THREE.Vector3(TRUNK.x + 1.0, 0, TRUNK.z + 0.6);
+      return walkTo(spot, () => {
+        face(new THREE.Vector3(spot.x + 1, 0, spot.z + 1));
+        startDo('nap', 30 + Math.random() * 30);
+        emitActivity('nap');
+      });
+    }
+    if (r < 0.32 && flowers.length) {
+      const i = Math.floor(Math.random() * flowers.length);
+      const fp = flowers[i].position;
+      const dir = new THREE.Vector3(koala.position.x - fp.x, 0, koala.position.z - fp.z).normalize();
+      const spot = new THREE.Vector3(fp.x + dir.x * 0.45, 0, fp.z + dir.z * 0.45);
+      if (validSpot(spot.x, spot.z)) {
+        return walkTo(spot, () => {
+          face(fp);
+          startDo('sniff', 3);
+          emitActivity('flower', { factId: (window.KoaFactIds || [])[i] });
+        });
+      }
+    }
+    if (r < 0.55) {
+      for (let k = 0; k < 12; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const spot = new THREE.Vector3(POND.x + Math.cos(a) * 1.95, 0, POND.z + Math.sin(a) * 1.95);
+        if (!validSpot(spot.x, spot.z)) continue;
+        return walkTo(spot, () => {
+          face(POND);
+          startDo('drink', 3.5);
+          emitActivity('pond');
+        });
+      }
+    }
+    if (r < 0.68) {
+      startDo('sky', 3.5);
+      if (Math.random() < 0.4) emitActivity('sky');
+      return;
+    }
+    if (r < 0.86) {
+      const s = randomSpot();
+      if (s) return walkTo(s, () => {
+        rest(2 + Math.random() * 3);
+        if (Math.random() < 0.3) emitActivity('wander');
+      });
+    }
+    goHome(true);
+  }
+
+  const tmpV = new THREE.Vector3();
+  function angleLerp(a, b, k) {
+    let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return a + d * k;
+  }
+  /** move o Koa e devolve a altura base (galho ou chão) */
+  function updateLife(dt, t, still) {
+    const talking = performance.now() - lastTalk < 25000;
+    if (still) {
+      if (life.mode !== 'branch') {
+        koala.position.copy(koalaHome);
+        life.mode = 'branch';
+        life.activity = null;
+      }
+    } else {
+      if (talking && life.mode !== 'branch' && life.mode !== 'jump') goHome(false);
+      if (life.mode === 'branch' || life.mode === 'idle') {
+        if (!talking) life.timer -= dt;
+        if (life.timer <= 0) chooseActivity();
+      } else if (life.mode === 'do') {
+        life.timer -= dt;
+        if (life.timer <= 0) rest(1.5 + Math.random() * 3);
+      } else if (life.mode === 'walk') {
+        tmpV.set(life.to.x - koala.position.x, 0, life.to.z - koala.position.z);
+        const dist = tmpV.length();
+        if (dist < 0.05) {
+          const cb = life.then;
+          life.then = null;
+          life.mode = 'idle';
+          life.timer = 1;
+          if (cb) cb();
+        } else {
+          life.heading = Math.atan2(tmpV.x, tmpV.z);
+          koala.position.addScaledVector(tmpV.normalize(), Math.min(dist, dt * 0.9));
+        }
+      } else if (life.mode === 'jump') {
+        life.jumpT += dt / 0.85;
+        const s = Math.min(1, life.jumpT);
+        koala.position.lerpVectors(life.from, life.to, s);
+        koala.position.y += Math.sin(s * Math.PI) * 0.9;
+        if (s >= 1) {
+          koala.position.copy(life.to);
+          const cb = life.then;
+          life.then = null;
+          if (cb) cb();
+        }
+      }
+    }
+    // para onde ele olha: andando, para o destino; parado, para a câmera
+    const toCam = Math.atan2(camera.position.x - koala.position.x, camera.position.z - koala.position.z);
+    const wantFace = life.mode === 'walk' || life.mode === 'jump' || life.mode === 'do' || (!life.faceCamera && life.mode !== 'branch') ? life.heading : toCam;
+    koala.rotation.y = angleLerp(koala.rotation.y, wantFace, Math.min(1, dt * 5));
+    if (life.mode === 'jump') return null;
+    const ground = life.mode === 'branch' ? koalaHome.y : 0;
+    return ground + (life.mode === 'walk' ? Math.abs(Math.sin(t * 11)) * 0.06 : 0);
+  }
+
   // ---------------------------------------------------------------- loop
   stage.classList.add('has-world');
   resize();
@@ -683,13 +894,19 @@ function start() {
     if (mood === 'thinking') Object.assign(target3, { x: -0.28, z: 0.08, y: 0.15 });
     if (mood === 'curious') Object.assign(target3, { z: 0.3, x: -0.05 });
     if (mood === 'confused') Object.assign(target3, { z: -0.28, y: -0.1 });
+    // o que ele está fazendo sozinho muda a pose (se não estiver reagindo a alguém)
+    const act = mood === 'idle' ? life.activity : null;
+    if (act === 'sniff') Object.assign(target3, { x: 0.5 + Math.sin(t * 9) * 0.05, z: 0 });
+    if (act === 'drink') Object.assign(target3, { x: 0.65 + Math.max(0, Math.sin(t * 4)) * 0.12, z: 0 });
+    if (act === 'sky') Object.assign(target3, { x: -0.6, z: Math.sin(t * 0.8) * 0.15 });
+    if (act === 'nap') Object.assign(target3, { x: 0.35, z: 0.25, y: 0 });
     headRot.set(lerp(head.rotation.x, target3.x, k), lerp(head.rotation.y, target3.y, k), lerp(head.rotation.z, target3.z, k));
     head.rotation.copy(headRot);
 
     const happy = mood === 'happy';
     eyes.forEach((e) => {
       e.visible = !happy;
-      e.scale.y = blink;
+      e.scale.y = act === 'nap' ? 0.1 : blink;
       e.position.y = lerp(e.position.y, mood === 'thinking' ? 0.1 : 0.06, k);
     });
     happyEyes.forEach((e) => (e.visible = happy));
@@ -701,7 +918,20 @@ function start() {
 
     // pulinho de alegria
     const hop = happy && !still && since < 1.3 ? Math.abs(Math.sin(since * 8)) * 0.28 * (1 - since / 1.3) : 0;
-    koala.position.y = koalaBase.y + hop;
+    const baseY = updateLife(dt, t, still);
+    if (baseY !== null) koala.position.y = baseY + hop;
+    zzz.visible = act === 'nap';
+    if (zzz.visible) {
+      const p = (t * 0.4) % 1;
+      zzz.position.set(0.45 + p * 0.2, 1.4 + p * 0.5, 0.2);
+      zzz.material.opacity = 1 - p * 0.8;
+    }
+    // no palco pequeno a câmera acompanha o Koa aonde ele for
+    if (!full) {
+      tmpV.copy(koala.position).add(new THREE.Vector3(0, 0.55, 0));
+      if (life.mode === 'jump') tmpV.y = target.y;
+      target.lerp(tmpV, Math.min(1, dt * 2.2));
+    }
 
     // corações / estrelas subindo
     hearts.forEach((s, i) => {
@@ -770,6 +1000,11 @@ function start() {
     },
     get learned() { return learnedCount; },
     /** para depuração */
-    get state() { return { view: { ...view }, cam: camera.position.toArray(), quality, full }; },
+    get state() { return { view: { ...view }, cam: camera.position.toArray(), quality, full, life: { mode: life.mode, activity: life.activity, pos: koala.position.toArray().map((v) => +v.toFixed(2)) } }; },
+    /** faz o Koa sair para passear agora (para testar) */
+    wander() {
+      lastTalk = -1e9;
+      life.timer = 0;
+    },
   };
 }

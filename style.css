@@ -360,6 +360,9 @@ dialog.sheet[open] { display: flex; flex-direction: column; animation: slideUp .
 }
 .fact-edit .row { display: flex; gap: 8px; justify-content: flex-end; }
 .facts-empty { text-align: center; color: var(--text-soft); padding: 30px 10px; }
+.facts-head { margin: 10px 2px 0; font-weight: 700; font-size: 15px; color: var(--text-soft); }
+.fact.thought { background: var(--surface-2); border-style: dashed; padding: 10px 14px; }
+.fact.thought small { color: var(--text-soft); font-size: 13px; }
 
 .sheet-foot {
   display: flex; flex-wrap: wrap; gap: 8px;

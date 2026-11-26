@@ -125,7 +125,8 @@
     $('level').setAttribute('aria-label', `O Koa já aprendeu ${plural(n)}. Nível ${lv.level}, ${lv.name}.`);
     // o mundo 3D cresce junto (uma flor por coisa aprendida)
     stage.dataset.count = String(n);
-    window.dispatchEvent(new CustomEvent('koa:growth', { detail: { count: n } }));
+    window.KoaFactIds = brain.facts.map((f) => f.id); // cada flor do mundo 3D é um fato
+    window.dispatchEvent(new CustomEvent('koa:growth', { detail: { count: n, ids: window.KoaFactIds } }));
   }
 
   // ---------- comemoração ----------
@@ -233,6 +234,28 @@
       return;
     }
     for (const f of list) factsEl.appendChild(factItem(f));
+
+    // o que ele deduziu sozinho (não dá para editar: muda sozinho quando os fatos mudam)
+    const ded = brain.deductions().filter((d) => !q || KoaBrain.normalize(d.text).includes(q));
+    if (ded.length) {
+      const head = document.createElement('li');
+      head.className = 'facts-head';
+      head.textContent = `💭 Coisas que pensei sozinho (${ded.length})`;
+      factsEl.appendChild(head);
+      for (const d of ded) {
+        const li = document.createElement('li');
+        li.className = 'fact thought';
+        const span = document.createElement('span');
+        span.className = 'fact-text';
+        span.textContent = d.text;
+        const why = document.createElement('small');
+        why.textContent = 'porque ' + d.because;
+        span.appendChild(document.createElement('br'));
+        span.appendChild(why);
+        li.appendChild(span);
+        factsEl.appendChild(li);
+      }
+    }
   }
 
   function factItem(f) {
@@ -475,8 +498,7 @@
       text = brain.introText();
       KoaKoala.setMood('curious');
     } else {
-      const name = brain.userName();
-      text = `Oi de novo${name ? ', ' + name : ''}! 🐨 Já sei ${plural(brain.count)}. Me ensina mais?`;
+      text = brain.greeting(); // lembra do tempo longe e de algo que aprendeu
       KoaKoala.setMood('happy', 2200);
     }
     // a apresentação entra no histórico só uma vez; o "oi de novo" é só no balão
@@ -484,9 +506,63 @@
     typeInBubble(text);
   }
 
+  // ---------- autonomia: o Koa puxa assunto sozinho ----------
+  // Se a pessoa ficar quieta, ele fala algo (no máximo 2 vezes seguidas sem resposta).
+  let idleTimer = null;
+  let unanswered = 0;
+  let lastActivity = null;
+
+  function scheduleInitiative() {
+    clearTimeout(idleTimer);
+    if (unanswered >= 2) return;
+    const wait = (unanswered === 0 ? 40 : 90) * 1000 + Math.random() * 20000;
+    idleTimer = setTimeout(speakUp, wait);
+  }
+
+  async function speakUp() {
+    // não interrompe: nem com a pessoa digitando, nem com telas abertas, nem em segundo plano
+    if (document.hidden || busy || input.value.trim() || memory.open || settingsDlg.open) return scheduleInitiative();
+    const r = brain.initiative({ activity: lastActivity });
+    lastActivity = null;
+    if (!r || !r.text) return;
+    unanswered++;
+    busy = true;
+    // sem a carinha de "pensando": isso faria o Koa largar o que está fazendo no mundo 3D
+    showTyping();
+    await new Promise((res) => setTimeout(res, reducedMotion.matches ? 100 : 900));
+    let text = r.text;
+    if (KoaLLM.isActive()) {
+      const polished = await KoaLLM.polish({ brain, history, userText: '(a pessoa está quieta; o Koa puxa assunto)', draft: text });
+      if (polished.usedLLM) text = polished.text;
+    }
+    const after = brain.state.pending ? 'curious' : 'idle';
+    KoaKoala.setMood(r.mood || 'idle', 2600, after);
+    addMsg('koa', text);
+    await typeInBubble(text);
+    busy = false;
+    scheduleInitiative();
+  }
+
+  // o mundo 3D conta o que o Koa fez sozinho (bebeu água, cheirou flor...)
+  window.addEventListener('koa:activity', (e) => {
+    lastActivity = Object.assign({ at: Date.now() }, e.detail || {});
+  });
+
+  form.addEventListener('submit', () => {
+    unanswered = 0;
+    setTimeout(scheduleInitiative, 0);
+  });
+  input.addEventListener('input', () => {
+    if (unanswered < 2) scheduleInitiative(); // digitando adia a iniciativa
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleInitiative();
+  });
+
   renderHistory();
   renderLevel();
   greet();
+  scheduleInitiative();
 
   // ---------- funciona offline ----------
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

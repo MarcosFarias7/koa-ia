@@ -144,6 +144,12 @@
     });
   }
 
+  /** "de" + assunto com contração: o gato -> do gato, a lua -> da lua */
+  function deX(s) {
+    const m = String(s).match(/^(o|a|os|as)\s+(.+)$/iu);
+    return m ? `d${m[1].toLowerCase()} ${m[2]}` : `de ${s}`;
+  }
+
   function cap(s) {
     s = String(s);
     return s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -229,7 +235,20 @@
     significam: { rel: 'significa', plural: true }, significa: { rel: 'significa', plural: false },
     trabalham: { rel: 'trabalha', plural: true }, trabalha: { rel: 'trabalha', plural: false },
   };
-  const VERB_ALTS = Object.keys(VERBS).sort((a, b) => b.length - a.length).map((v) => v.replace(' ', '\\s+')).join('|');
+  // mais verbos que o Koa entende: [singular, plural, forma com "eu"]
+  const EXTRA_VERBS = [
+    ['pode', 'podem', 'posso'], ['consegue', 'conseguem', 'consigo'], ['faz', 'fazem', 'faço'],
+    ['usa', 'usam', 'uso'], ['precisa', 'precisam', 'preciso'], ['ajuda', 'ajudam', 'ajudo'],
+    ['ama', 'amam', 'amo'], ['adora', 'adoram', 'adoro'], ['odeia', 'odeiam', 'odeio'],
+    ['produz', 'produzem', 'produzo'], ['bebe', 'bebem', 'bebo'], ['protege', 'protegem', 'protejo'],
+    ['parece', 'parecem', 'pareço'], ['vira', 'viram', 'viro'], ['sabe', 'sabem', 'sei'],
+    ['tem medo de', 'têm medo de', 'tenho medo de'],
+  ];
+  for (const [s, p] of EXTRA_VERBS) {
+    VERBS[s] = { rel: s, plural: false };
+    VERBS[p] = { rel: s, plural: true };
+  }
+  const VERB_ALTS = Object.keys(VERBS).sort((a, b) => b.length - a.length).map((v) => v.replace(/ /g, '\\s+')).join('|');
   const STATEMENT_RE = new RegExp(`^(.+?)\\s+(?:tamb[eé]m\\s+)?(${VERB_ALTS})\\s+(.+)$`, 'iu');
   const STARTS_WITH_VERB_RE = new RegExp(`^(?:tamb[eé]m\\s+)?(?:${VERB_ALTS})\\s+\\S`, 'iu');
 
@@ -245,7 +264,12 @@
     'é': 'sou', tem: 'tenho', fica: 'fico', mora: 'moro', vive: 'vivo', gosta: 'gosto', come: 'como',
     serve: 'sirvo', significa: 'significo', chama: 'me chamo', trabalha: 'trabalho',
   };
-  const REL_ORDER = ['chama', 'é', 'tem', 'gosta', 'não gosta', 'come', 'mora', 'vive', 'fica', 'trabalha', 'serve', 'significa', 'nota'];
+  for (const [s, p, eu] of EXTRA_VERBS) {
+    REL_SING[s] = s;
+    REL_PL[s] = p;
+    REL_EU[s] = eu;
+  }
+  const REL_ORDER = ['chama', 'é', 'tem', 'ação', 'pode', 'gosta', 'não gosta', 'come', 'bebe', 'mora', 'vive', 'fica', 'trabalha', 'serve', 'significa', 'nota'];
 
   function verbFor(rel, subjOut, plural) {
     if (rel.startsWith('não ')) return 'não ' + verbFor(rel.slice(4), subjOut, plural);
@@ -254,12 +278,86 @@
     return table[rel] || rel;
   }
 
+  /** o "resto" da frase depois do sujeito: "tem bigode", "mia" */
+  function predicate(rel, subjOut, vals, plural) {
+    if (rel === 'ação') return joinPt(vals);
+    if (rel === 'não ação') return 'não ' + joinPt(vals);
+    return `${verbFor(rel, subjOut, plural)} ${joinPt(vals)}`;
+  }
+
   /** frase sem maiúscula nem ponto: "o céu é azul" */
   function phrase(subject, rel, values, plural) {
     const subjOut = swapPerspective(subject);
     const vals = (Array.isArray(values) ? values : [values]).map(swapPerspective);
     if (rel === 'nota') return `sobre ${subjOut}: ${vals.join('; ')}`;
-    return `${subjOut} ${verbFor(rel, subjOut, plural)} ${joinPt(vals)}`;
+    return `${subjOut} ${predicate(rel, subjOut, vals, plural)}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Gosto e humor do Koa
+  // ---------------------------------------------------------------------------
+  const POS_WORDS = new Set(normalize(
+    'fofo fofa fofinho fofinha lindo linda bonito bonita gostoso gostosa doce legal bom boa divertido divertida ' +
+    'cheiroso cheirosa macio macia alegre amigo amiga carinhoso carinhosa delicioso deliciosa incrível maravilhoso ' +
+    'maravilhosa colorido colorida brilhante feliz engraçado engraçada amoroso amorosa calmo calma fofura top'
+  ).split(' '));
+  const NEG_WORDS = new Set(normalize(
+    'chato chata feio feia ruim perigoso perigosa bravo brava nojento nojenta amargo amarga barulhento barulhenta ' +
+    'fedido fedida triste mau má venenoso venenosa assustador assustadora violento violenta sujo suja horrível'
+  ).split(' '));
+  const KOA_LIKES = ['eucalipto', 'folha', 'arvore', 'abraco', 'carinho', 'soneca', 'dormir', 'sol', 'flor', 'fruta', 'agua', 'lua', 'estrela', 'natureza', 'coala'];
+  const KOA_DISLIKES = ['barulho', 'fogo', 'fumaca', 'grito', 'tempestade', 'motosserra', 'trovao'];
+  const DAILY_MOODS = ['alegre', 'brincalhão', 'pensativo', 'carinhoso', 'animado'];
+
+  /** número 0..1 estável a partir de um texto */
+  function hashStr(s) {
+    let h = 2166136261;
+    for (const ch of String(s)) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+    return ((h >>> 0) % 10000) / 10000;
+  }
+
+  /** calculadora simples (+ - * / e parênteses), sem eval */
+  function calc(expr) {
+    const s = expr.replace(/\s+/g, '');
+    let i = 0;
+    const num = () => {
+      const m = s.slice(i).match(/^\d+(?:\.\d+)?/);
+      if (!m) throw new Error('num');
+      i += m[0].length;
+      return parseFloat(m[0]);
+    };
+    const factor = () => {
+      if (s[i] === '-') { i++; return -factor(); }
+      if (s[i] === '(') {
+        i++;
+        const v = sum();
+        if (s[i] !== ')') throw new Error(')');
+        i++;
+        return v;
+      }
+      return num();
+    };
+    const term = () => {
+      let v = factor();
+      while (s[i] === '*' || s[i] === '/') {
+        const op = s[i++];
+        const r = factor();
+        v = op === '*' ? v * r : v / r;
+      }
+      return v;
+    };
+    const sum = () => {
+      let v = term();
+      while (s[i] === '+' || s[i] === '-') {
+        const op = s[i++];
+        const r = term();
+        v = op === '+' ? v + r : v - r;
+      }
+      return v;
+    };
+    const v = sum();
+    if (i !== s.length) throw new Error('fim');
+    return v;
   }
 
   function sentence(subject, rel, values, plural) {
@@ -534,7 +632,12 @@
       for (const s of sentences) this.handleSentence(s, out);
 
       if (!out.parts.length) this.fallback(text, out);
-      if (out.learned && !this.state.pending && !out.asked) this.maybeCurious(out);
+      if (out.learned && !this.state.pending && !out.asked) {
+        const keys = new Set(this.state.facts.slice(-out.learned).map((f) => f.key));
+        if (!this.maybeThink(out, keys)) this.maybeCurious(out);
+        if (!out.asked && !out.thought) this.maybeOpinion(out, [...keys][0]);
+      }
+      this.state.lastSeen = this.now();
 
       let mood = out.mood;
       if (out.learned || out.changed) mood = 'happy';
@@ -569,6 +672,7 @@
       if (this.smalltalk(core, out)) return;
       if (this.correction(core, out)) return;
       if (this.forget(core, out)) return;
+      if (this.mathAndTime(core, out)) return;
       if (isQ) return this.question(core, out);
       const facts = this.parseStatement(core);
       if (facts) return this.learnAll(facts, out, {});
@@ -632,7 +736,221 @@
         const vals = rel === 'é' && wordCount(value) > 8 ? [value] : ['tem', 'come', 'gosta', 'é'].includes(rel) ? splitList(value) : [value];
         return this.mkList(subject, key, rel, vals, verb.plural);
       }
+
+      // ações sem complemento: "o gato mia", "os pássaros voam", "o peixe não anda"
+      if ((m = c.match(/^(.{1,40}?)\s+(n[aã]o\s+)?(\p{L}{2,}(?:a|e|am|em|ia|iam))$/iu))) {
+        const verbWord = m[3];
+        let subject = m[1].trim().replace(/\s+tamb[eé]m$/iu, '');
+        if (/(osa|oso|inha|inho|ela|ita|ada|ida)$/iu.test(verbWord) && !/^nada$/iu.test(verbWord)) return null;
+        if (/^(eu|voc[eê]|vc|tu|n[oó]s|que|isso)$/iu.test(subject)) return null;
+        if (/^(ele|ela|eles|elas|isso|isto)$/iu.test(subject)) {
+          if (!this.state.lastSubject) return null;
+          subject = this.state.lastSubject.subject;
+        }
+        if (!this.validSubject(subject) || wordCount(subject) > 4) return null;
+        const key = subjectKey(subject);
+        if (!key || key === 'koa:self') return null;
+        return this.mk(subject, key, m[2] ? 'não ação' : 'ação', verbWord, /m$/i.test(verbWord));
+      }
       return null;
+    }
+
+    // ---- raciocínio: dedução e busca reversa ---------------------------------
+    keySet() {
+      return new Set(this.state.facts.map((f) => f.key));
+    }
+
+    /** chaves que um valor pode representar: "um animal fofo" -> ["animal fofo", "animal"] */
+    valueKeys(v) {
+      const k = keyOf(cleanSubject(v));
+      if (!k) return [];
+      const first = k.split(' ')[0];
+      return k === first ? [k] : [k, first];
+    }
+
+    /** categorias de um assunto (gato é um animal -> animal), até 3 níveis */
+    categoriesOf(key, depth = 3, seen = new Set()) {
+      if (depth <= 0 || seen.has(key)) return [];
+      seen.add(key);
+      const keys = this.keySet();
+      const out = [];
+      for (const f of this.state.facts) {
+        if (f.key !== key || f.rel !== 'é') continue;
+        for (const ck of this.valueKeys(f.value)) {
+          if (!keys.has(ck) || seen.has(ck)) continue;
+          out.push({ key: ck, via: f });
+          out.push(...this.categoriesOf(ck, depth - 1, seen));
+        }
+      }
+      return out;
+    }
+
+    /** o que um assunto "herda" das categorias e ninguém ensinou diretamente */
+    inherited(key, rels) {
+      const own = this.findByKey(key);
+      const out = [];
+      for (const c of this.categoriesOf(key)) {
+        for (const f of this.state.facts) {
+          if (f.key !== c.key || f.rel === 'nota' || namespace(f.key)) continue;
+          if (rels && !rels.includes(f.rel)) continue;
+          if (own.some((o) => o.rel === f.rel && this.sameValue(o.value, f.value))) continue;
+          if (f.rel === 'é' && this.valueKeys(f.value).includes(key)) continue;
+          if (out.some((o) => o.fact.rel === f.rel && this.sameValue(o.fact.value, f.value))) continue;
+          out.push({ fact: f, cat: c });
+        }
+      }
+      return out;
+    }
+
+    /** "como gato é um animal, e animal respira, então gato respira" */
+    deductionText(subject, inh, plural) {
+      const via = inh.cat.via;
+      return {
+        because: `${phrase(via.subject, 'é', [via.value], via.plural)} e ${phrase(inh.fact.subject, inh.fact.rel, [inh.fact.value], inh.fact.plural)}`,
+        result: phrase(subject, inh.fact.rel, [inh.fact.value], plural),
+      };
+    }
+
+    /** tudo o que o Koa conseguiu deduzir sozinho */
+    deductions(limit = 60) {
+      const out = [];
+      const seen = new Set();
+      for (const f of this.state.facts) {
+        if (namespace(f.key) || seen.has(f.key)) continue;
+        seen.add(f.key);
+        for (const inh of this.inherited(f.key)) {
+          const t = this.deductionText(f.subject, inh, f.plural);
+          out.push({ id: `${f.key}|${inh.fact.rel}|${normalize(inh.fact.value)}`, key: f.key, catKey: inh.cat.key, text: cap(t.result) + '.', because: t.because, result: t.result });
+          if (out.length >= limit) return out;
+        }
+      }
+      return out;
+    }
+
+    /** fatos cujo VALOR fala de algo: "o que é azul?" -> "o céu é azul" */
+    reverseLookup(valueRaw, rels) {
+      const toks = keyOf(cleanSubject(valueRaw)).split(' ').filter(Boolean);
+      if (!toks.length) return [];
+      return this.state.facts.filter((f) => {
+        if (f.rel === 'nota' || (rels && !rels.includes(f.rel))) return false;
+        const vt = keyOf(f.value).split(' ');
+        return toks.every((t) => vt.includes(t));
+      });
+    }
+
+    answerReverse(rel, valueRaw, out) {
+      const value = cleanSubject(valueRaw);
+      const hits = this.reverseLookup(value, [rel]);
+      if (hits.length) {
+        this.say(out, `${this.compose(hits)} 😊`, 'happy');
+        out.answered = true;
+        return;
+      }
+      const verb = rel === 'ação' ? swapPerspective(value) : `${REL_SING[rel] || rel} ${swapPerspective(value)}`;
+      this.say(out, `Hmm, não sei quem ${verb}... 🤔 Me conta?`, 'curious');
+      this.setPending(out, { type: 'teach-subject', rel, value: rel === 'ação' ? value : value });
+    }
+
+    // ---- gosto e humor -------------------------------------------------------
+    /** opinião do Koa sobre um assunto: score 1 (gosta), 0 (tanto faz), -1 (não gosta) */
+    opinion(key) {
+      const k = String(key).replace(/^user:/, '');
+      const toks = k.split(' ');
+      if (KOA_LIKES.some((w) => toks.includes(singular(w)) || toks.includes(w))) return { score: 1, reason: 'innate' };
+      if (KOA_DISLIKES.some((w) => toks.includes(singular(w)) || toks.includes(w))) return { score: -1, reason: 'innate' };
+      let s = 0;
+      let fact = null;
+      for (const f of this.findByKey(key)) {
+        for (const w of normalize(f.value).split(' ')) {
+          if (POS_WORDS.has(w)) { s++; fact = fact || f; }
+          if (NEG_WORDS.has(w)) { s--; fact = fact || f; }
+        }
+      }
+      if (s) return { score: Math.sign(s), reason: 'fact', fact };
+      if (this.findByKey('user:gosta').some((f) => keyOf(f.value).split(' ').some((t) => toks.includes(t)))) return { score: 1, reason: 'user' };
+      const h = hashStr('gosto:' + k);
+      return { score: h < 0.6 ? 1 : h < 0.85 ? 0 : -1, reason: 'taste' };
+    }
+
+    opinionText(subjectRaw) {
+      const subject = cleanSubject(String(subjectRaw).replace(/^(?:de|do|da|dos|das)\s+/iu, ''));
+      const key = subjectKey(subject);
+      const s = swapPerspective(subject);
+      const known = this.findByKey(key).length > 0;
+      const op = this.opinion(key);
+      let t;
+      if (op.reason === 'innate') t = op.score > 0 ? `Eu AMO ${s}! 🌿 Coala que é coala adora ${s}.` : `Ai, não gosto ${deX(s)}... me dá medo. 😣`;
+      else if (op.reason === 'fact') t = op.score > 0 ? `Gosto sim! ${cap(phrase(op.fact.subject, op.fact.rel, [op.fact.value], op.fact.plural))}, né? 💚` : `Hmm, não muito... ${cap(phrase(op.fact.subject, op.fact.rel, [op.fact.value], op.fact.plural))}. 😕`;
+      else if (op.reason === 'user') t = `Gosto! Você gosta, então eu também quero gostar! 🥰`;
+      else t = op.score > 0 ? `Acho que gosto ${deX(s)}! Não sei explicar, só gosto. 😊` : op.score === 0 ? `Sei lá... ${s} é ok. Nem gosto nem desgosto. 🤷` : `Hmm, acho que não curto muito ${s}... mas posso mudar de ideia! 😅`;
+      return { text: t, known, key, subject, score: op.score };
+    }
+
+    /** humor do Koa: depende da hora e do "humor do dia" */
+    koaMood() {
+      const d = new Date(this.now());
+      const h = d.getHours();
+      const daily = DAILY_MOODS[Math.floor(hashStr('dia:' + Math.floor(this.now() / 86400000)) * DAILY_MOODS.length)];
+      if (h < 6 || h >= 23) return { key: 'sonolento', daily };
+      if (h >= 11 && h < 14) return { key: 'faminto', daily };
+      return { key: daily, daily };
+    }
+
+    howAreYou() {
+      return {
+        sonolento: 'Tô com soninho... *boceja* 😴 Mas pra você eu fico acordado! E você?',
+        faminto: 'Tô com uma fominha de eucalipto! 🌿 E você, já comeu?',
+        alegre: 'Tô feliz da vida hoje! ☀️ E você?',
+        brincalhão: 'Tô brincalhão hoje! Quer brincar de me ensinar coisas? 😜',
+        pensativo: 'Tô pensativo... fiquei pensando nas coisas que você me ensinou. 💭 E você?',
+        carinhoso: 'Tô carinhoso hoje! Me dá um abraço? 🤗 E você, como está?',
+        animado: 'Tô super animado! 🤩 E você?',
+      }[this.koaMood().key];
+    }
+
+    // ---- contas, hora e data -------------------------------------------------
+    mathAndTime(core, out) {
+      const c = core.trim();
+      const d = new Date(this.now());
+      if (/^(?:que\s+horas?\s+(?:s[aã]o|[eé])|me\s+diz\s+as\s+horas|sabe\s+que\s+horas\s+s[aã]o)/iu.test(c)) {
+        this.say(out, `Agora são ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}! ⏰`, 'idle');
+        out.answered = true;
+        return true;
+      }
+      if (/^(?:que\s+dia\s+(?:[eé]\s+)?hoje|hoje\s+[eé]\s+que\s+dia|qual\s+(?:[eé]\s+)?a\s+data\s+(?:de\s+)?hoje)/iu.test(c)) {
+        const txt = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+        this.say(out, `Hoje é ${txt}! 📅`, 'idle');
+        out.answered = true;
+        return true;
+      }
+      if (/^(?:o\s*qu[eê]|oq)\s+(?:voc[eê]|vc)\s+aprendeu\s+hoje/iu.test(c)) {
+        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const today = this.state.facts.filter((f) => f.createdAt >= start);
+        this.say(out, today.length ? `Hoje eu aprendi ${today.length} ${today.length === 1 ? 'coisa' : 'coisas'}! ${today.slice(-4).map((f) => this.describe(f)).join(' ')} 🧠` : 'Hoje ainda não aprendi nada... 🥺 Me ensina?', today.length ? 'happy' : 'curious');
+        out.answered = true;
+        return true;
+      }
+      let e = c
+        .replace(/^(?:quanto\s+(?:[eé]|eh|d[aá]|fica)\s+|calcul[ae]\s+|faz\s+a\s+conta\s+(?:de\s+)?)/iu, '')
+        .replace(/\bmais\b/giu, '+').replace(/\bmenos\b/giu, '-').replace(/\bvezes\b/giu, '*')
+        .replace(/dividido\s+por/giu, '/').replace(/[x×]/giu, '*').replace(/÷/g, '/').replace(/,/g, '.');
+      if (/^[\d\s+\-*/().]+$/.test(e) && /\d\s*[+\-*/]\s*[\d(-]/.test(e)) {
+        let v;
+        try {
+          v = calc(e);
+        } catch (err) {
+          return false;
+        }
+        if (!Number.isFinite(v)) {
+          this.say(out, 'Dividir por zero? Nem coala consegue! 😵', 'confused');
+        } else {
+          const r = v.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+          this.say(out, this.pick([`Contei nos dedinhos: ${r}! 🐨`, `Hmm... ${r}! Acertei? 🤓`, `Essa eu sei! Dá ${r}. ✨`]), 'happy');
+        }
+        out.answered = true;
+        return true;
+      }
+      return false;
     }
 
     validSubject(s) {
@@ -825,6 +1143,46 @@
       if (/^(?:o\s*qu[eê]|oq)\s+eu\s+tenho/iu.test(c)) return this.answerUser(['user:tem'], out);
       if (/^(?:com\s+o\s*qu[eê]|onde|em\s+qu[eê])\s+eu\s+trabalho/iu.test(c)) return this.answerUser(['user:trabalha'], out);
 
+      // gostos do Koa
+      if ((m = c.match(/^(?:(?:e\s+)?(?:voc[eê]|vc|tu)\s+)gosta\s+(?:muito\s+)?((?:de|do|da|dos|das)\s+.+)$/iu))) {
+        const op = this.opinionText(m[1]);
+        this.say(out, op.text, op.score > 0 ? 'happy' : op.score < 0 ? 'confused' : 'idle');
+        out.answered = true;
+        if (!op.known && op.key && !/^user:|^koa:/.test(op.key) && this.opinion(op.key).reason === 'taste') {
+          this.say(out, `Mas me conta: o que é ${swapPerspective(op.subject)}?`, 'curious');
+          this.setPending(out, { type: 'teach', subject: op.subject, key: op.key, rel: 'é' });
+        }
+        return;
+      }
+      if ((m = c.match(/^(?:o\s*qu[eê]|oq)\s+(?:voc[eê]|vc)\s+acha\s+(?:de|do|da|dos|das|sobre)\s+(.+)$/iu))) {
+        const op = this.opinionText(m[1]);
+        this.say(out, op.text, op.score > 0 ? 'happy' : 'idle');
+        out.answered = true;
+        return;
+      }
+      if (/^(?:do\s+qu[eê]|o\s*qu[eê]|oq|de\s+qu[eê])\s+(?:voc[eê]|vc)\s+(?:mais\s+)?gosta/iu.test(c)) {
+        const liked = [...new Set(this.state.facts.filter((f) => !namespace(f.key)).map((f) => f.key))]
+          .filter((k) => this.opinion(k).score > 0)
+          .slice(0, 4)
+          .map((k) => deX(swapPerspective(this.findByKey(k)[0].subject)));
+        this.say(out, `Eu gosto ${joinPt(['de eucalipto', 'de soneca', 'de abraço', ...liked])}! 🌿 E de conversar com você, claro! 💚`, 'happy');
+        out.answered = true;
+        return;
+      }
+      if (/^(?:como\s+(?:voc[eê]|vc)\s+(?:est[aá]|t[aá])|(?:voc[eê]|vc)\s+(?:est[aá]|t[aá])\s+bem|qual\s+(?:[eé]\s+)?(?:o\s+)?seu\s+humor)/iu.test(c)) {
+        this.say(out, this.howAreYou(), 'happy');
+        return;
+      }
+
+      // busca reversa: "quem tem bigode?", "quem mia?"
+      if ((m = c.match(/^(?:quem|o\s*qu[eê]|que|qual|quais)\s+(?:coisa\s+|bicho\s+|animal\s+)?(tem|têm|come|comem|mora|moram|vive|vivem|gosta|gostam|pode|podem|faz|fazem|usa|usam|bebe|bebem|precisa|precisam|ama|amam|adora|adoram)\s+(.+)$/iu))) {
+        const v = VERBS[m[1].toLowerCase()];
+        if (v) return this.answerReverse(v.rel, m[2], out);
+      }
+      if ((m = c.match(/^quem\s+(\p{L}{2,}(?:a|e|am|em|ia|iam))$/iu)) && !/^(sabe|pode|gosta)$/iu.test(m[1])) {
+        return this.answerReverse('ação', m[1], out);
+      }
+
       for (const fr of FRAMES) {
         if ((m = c.match(fr.re))) {
           const subject = cleanSubject(m[1]);
@@ -853,9 +1211,24 @@
       const all = this.findByKey(key);
       const hits = rels ? all.filter((f) => rels.includes(f.rel)) : all;
 
+      const inh = this.inherited(key, rels);
+      const subjOf = (all[0] && all[0].subject) || subject;
+      const plOf = !!(all[0] && all[0].plural);
       if (hits.length) {
         this.state.lastSubject = { key, subject: hits[0].subject, rel: hits[0].rel };
-        this.say(out, this.compose(hits), 'idle');
+        let t = this.compose(hits);
+        if (inh.length) {
+          const extra = inh.slice(0, 2).map((i) => predicate(i.fact.rel, swapPerspective(subjOf), [swapPerspective(i.fact.value)], plOf));
+          t += ` E pensando aqui: como ${phrase(inh[0].cat.via.subject, 'é', [inh[0].cat.via.value])}, acho que também ${joinPt(extra)}. 🤔`;
+        }
+        this.say(out, t, 'idle');
+        out.answered = true;
+        return;
+      }
+      if (inh.length) {
+        const d = this.deductionText(subjOf, inh[0], plOf);
+        this.state.lastSubject = { key, subject: subjOf, rel: mainRel };
+        this.say(out, `Ninguém me contou, mas pensei sozinho: ${d.because}... então acho que ${d.result}! 💭`, 'happy');
         out.answered = true;
         return;
       }
@@ -863,6 +1236,12 @@
         this.state.lastSubject = { key, subject: all[0].subject, rel: mainRel };
         this.say(out, `Hmm, isso eu ainda não sei... Mas sei que: ${this.compose(all)} Me conta, ${ask}?`, 'curious');
         this.setPending(out, { type: 'teach', subject: all[0].subject, key, rel: mainRel === 'nota' ? 'é' : mainRel });
+        return;
+      }
+      const rev = namespace(key) ? [] : this.reverseLookup(subject);
+      if (rev.length) {
+        this.say(out, `Hmm, não sei ${ask} sozinho... Mas sei que ${rev.slice(0, 3).map((f) => phrase(f.subject, f.rel, [f.value], f.plural)).join('; ')}! Me ensina mais sobre ${swapPerspective(subject)}? 🤔`, 'curious');
+        this.setPending(out, { type: 'teach', subject, key, rel: mainRel === 'nota' ? 'é' : mainRel });
         return;
       }
       const fz = this.fuzzyKey(key);
@@ -941,6 +1320,13 @@
         out.answered = true;
         return;
       }
+      const inh = this.inherited(f.key, [f.rel]).find((i) => this.sameValue(i.fact.value, f.value) || normalize(i.fact.value).includes(normalize(f.value)));
+      if (inh) {
+        const d = this.deductionText(known[0] ? known[0].subject : f.subject, inh, f.plural);
+        this.say(out, `Acho que sim! ${cap(d.because)}... então ${d.result}! 🤓`, 'happy');
+        out.answered = true;
+        return;
+      }
       if (known.length) {
         this.say(out, `Hmm, não sei... O que eu sei é: ${this.compose(known)} Mas ${p}? É verdade?`, 'curious');
       } else {
@@ -971,6 +1357,16 @@
         return false;
       }
 
+      if (p.type === 'teach-subject') {
+        // o Koa perguntou "quem mia?" e a pessoa respondeu "o gato"
+        clear();
+        if (isQ || CANCEL_RE.test(core) || NO_RE.test(core) || (this.parseStatement(core) && wordCount(core) > 3)) return false;
+        const subject = cleanSubject(core.replace(/^(?:[eé]\s+)?/iu, ''));
+        const key = subjectKey(subject);
+        if (!key || !this.validSubject(subject)) return false;
+        this.learnAll([{ subject, key, rel: p.rel, value: p.value, plural: false }], out, {});
+        return true;
+      }
       if (CANCEL_RE.test(core)) {
         clear();
         this.say(out, this.pick(['Tudo bem! Fica pra próxima. 🍃', 'Sem problemas! Depois você me conta. 😊']), 'idle');
@@ -1134,7 +1530,7 @@
         const favGreet = this.favorite(this.state.style.greets, 2);
         const g = /^(bom|boa)/.test(word) ? cap(word.replace(/\s+/g, ' ')) : cap(favGreet ? favGreet.form : word);
         let t = `${g}${name ? ', ' + name : ''}! 🐨`;
-        if (how) t += ' Tô ótimo, mastigando um eucalipto! E você?';
+        if (how) t += ' ' + this.howAreYou();
         else if (!rest) t += ' ' + this.pick(['Me ensina alguma coisa nova?', 'Que bom te ver!', 'Tava com saudade!']);
         this.say(out, t, 'happy');
         const remaining = how ? rest.slice(how[0].length) : rest;
@@ -1142,7 +1538,7 @@
         return true;
       }
       if (/^(?:tudo\s+bem|td\s+bem|tudo\s+bom|como\s+vai|como\s+(?:voc[eê]|vc)\s+(?:est[aá]|t[aá]))(?:\s+(?:com\s+)?(?:voc[eê]|vc))?$/iu.test(core)) {
-        this.say(out, 'Tô ótimo, mastigando um eucalipto! 🌿 E você?', 'happy');
+        this.say(out, this.howAreYou(), 'happy');
         return true;
       }
       if (/^(?:eu\s+)?(?:te\s+amo|amo\s+(?:voc[eê]|vc|tu)|gosto\s+(?:muito\s+)?de\s+(?:voc[eê]|vc|ti))(?:\s+koa)?$/iu.test(core)) {
@@ -1189,6 +1585,24 @@
     }
 
     fallback(core, out) {
+      // a frase fala de algo que o Koa já conhece? guarda como anotação sobre o assunto
+      if (core && wordCount(core) >= 3 && core.length <= 200) {
+        const toks = new Set(keyOf(core).split(' '));
+        let best = null;
+        for (const f of this.state.facts) {
+          if (namespace(f.key) || f.rel === 'nota') continue;
+          const kt = f.key.split(' ');
+          if (kt.every((t) => toks.has(t)) && (!best || f.key.length > best.key.length)) best = f;
+        }
+        if (best) {
+          const r = this.learn({ subject: best.subject, key: best.key, rel: 'nota', value: core, plural: best.plural });
+          if (r && r.status === 'new') {
+            out.learned++;
+            this.say(out, `Hmm, não entendi direitinho, mas guardei isso sobre ${swapPerspective(best.subject)}: "${swapPerspective(core)}" 📝`, 'happy');
+            return;
+          }
+        }
+      }
       const fav = this.favoriteWord();
       const asked = new Set(this.state.asked);
       if (fav && !asked.has('w:' + fav.key) && this.rng() < 0.5) {
@@ -1205,9 +1619,8 @@
     }
 
     // ---- curiosidade -----------------------------------------------------------
-    maybeCurious(out) {
+    curiosityCandidates() {
       const st = this.state;
-      if (st.turns - st.lastCuriosityTurn < 3 || st.facts.length < 2 || this.rng() >= 0.3) return;
       const keys = new Set(st.facts.map((f) => f.key));
       const asked = new Set(st.asked);
       const cands = [];
@@ -1215,7 +1628,7 @@
         if (f.rel === 'é' && !namespace(f.key)) {
           const bare = cleanSubject(f.value);
           const vk = keyOf(bare);
-          if (vk && wordCount(vk) <= 3 && !keys.has(vk) && !asked.has('v:' + vk) && !/^\d/.test(vk) && !/^(porque|que|pq|se|quando|de|do|da)\s/.test(vk) &&!/[\p{Lu}]/u.test(bare[0] || '')) {
+          if (vk && wordCount(vk) <= 3 && !keys.has(vk) && !asked.has('v:' + vk) && !/^\d/.test(vk) && !/^(porque|que|pq|se|quando|de|do|da)\s/.test(vk) && !/[\p{Lu}]/u.test(bare[0] || '')) {
             cands.push({ id: 'v:' + vk, text: `Você me disse que ${phrase(f.subject, f.rel, [f.value], f.plural)}. Mas o que é ${swapPerspective(bare)}? 🤔`, pending: { type: 'teach', subject: bare, key: vk, rel: 'é' } });
           }
         }
@@ -1230,13 +1643,159 @@
           cands.push({ id: 'm:' + k, text: `O que mais você sabe sobre ${swapPerspective(fs[0].subject)}? Me conta! 🤔`, pending: { type: 'teach', subject: fs[0].subject, key: k, rel: 'é' } });
         }
       }
+      return cands;
+    }
+
+    markAsked(id) {
+      const st = this.state;
+      st.asked.push(id);
+      if (st.asked.length > 300) st.asked = st.asked.slice(-300);
+    }
+
+    maybeCurious(out) {
+      const st = this.state;
+      if (st.turns - st.lastCuriosityTurn < 3 || st.facts.length < 2 || this.rng() >= 0.3) return;
+      const cands = this.curiosityCandidates();
       if (!cands.length) return;
       const c = this.pick(cands);
-      st.asked.push(c.id);
-      if (st.asked.length > 200) st.asked = st.asked.slice(-200);
+      this.markAsked(c.id);
       st.lastCuriosityTurn = st.turns;
       this.say(out, c.text, 'curious');
       this.setPending(out, c.pending);
+    }
+
+    /** depois de aprender, o Koa liga os pontos sozinho e conta o que deduziu */
+    maybeThink(out, keys) {
+      const asked = new Set(this.state.asked);
+      const d = this.deductions().find((x) => !asked.has('d:' + x.id) && (!keys || keys.has(x.key) || keys.has(x.catKey)));
+      if (!d) return false;
+      this.markAsked('d:' + d.id);
+      this.say(out, this.pick([
+        `Opa, pensei sozinho! 💭 Se ${d.because}, então ${d.result}! 🤯`,
+        `Peraí... ${d.because}... então ${d.result}! Descobri sozinho! 🤓`,
+      ]), 'happy');
+      out.thought = true;
+      return true;
+    }
+
+    /** às vezes o Koa dá opinião sobre o que acabou de aprender */
+    maybeOpinion(out, key) {
+      if (!key || namespace(key) || this.rng() >= 0.2) return;
+      const f = this.findByKey(key)[0];
+      if (!f) return;
+      const op = this.opinion(key);
+      const s = swapPerspective(f.subject);
+      if (op.score > 0) this.say(out, this.pick([`E quer saber? Acho que gosto ${deX(s)}! 💚`, `${cap(s)}... gostei! 😊`]), 'happy');
+      else if (op.score < 0) this.say(out, `Hmm, sei não se gosto ${deX(s)}... 😕`, 'idle');
+    }
+
+    // ---- puxar assunto sozinho -------------------------------------------------
+    /**
+     * O Koa fala sem ser chamado (o app chama isso quando a pessoa fica um tempo quieta).
+     * @param {{activity?: {type:string, factId?:string}}} ctx
+     * @returns {{text:string, mood:string}}
+     */
+    initiative(ctx = {}) {
+      const st = this.state;
+      const out = { parts: [], mood: 'idle', learned: 0, changed: 0, answered: false, asked: false };
+      const name = this.userName();
+      const nm = name ? ', ' + name : '';
+      const asked = new Set(st.asked);
+      const facts = st.facts;
+      const h = new Date(this.now()).getHours();
+      const dayId = Math.floor(this.now() / 86400000);
+      const cands = [];
+      const add = (id, w, fn) => {
+        if (!asked.has(id)) cands.push({ id, w, fn });
+      };
+
+      if (!facts.length) {
+        add('i:vazio:' + st.turns, 3, () => this.say(out, this.pick([`Ei${nm}... me ensina alguma coisa? Tô curioso! 🥺`, `Psiu${nm}! Minha cabecinha tá vazia... me conta uma coisa? 🐨`]), 'curious'));
+      }
+      const act = ctx.activity;
+      if (act && act.type) {
+        const f = act.factId && facts.find((x) => x.id === act.factId);
+        const texts = {
+          pond: 'Acabei de beber água no laguinho! 💧 Tava geladinha.',
+          flower: f ? `Fui cheirar uma flor que nasceu quando você me ensinou que ${phrase(f.subject, f.rel, [f.value], f.plural)} 🌸` : 'Cheirei uma florzinha agora! 🌸 Que cheirinho bom.',
+          nap: 'Tirei uma soneca rapidinha... 😴 Voltei!',
+          wander: 'Dei uma voltinha pela ilha! 🏝️',
+          sky: 'Tava olhando o céu... ☁️ Fiquei pensando em tanta coisa.',
+          tree: 'Subi de volta no meu galho! 🌿',
+        };
+        if (texts[act.type]) add(`i:act:${act.type}:${act.at || this.now()}`, 4, () => this.say(out, texts[act.type], 'happy'));
+      }
+      const ded = this.deductions().find((x) => !asked.has('d:' + x.id));
+      if (ded) {
+        add('d:' + ded.id, 3, () => this.say(out, `Ei, sabe o que eu pensei sozinho? 💭 Se ${ded.because}, então ${ded.result}!`, 'happy'));
+      }
+      for (const c of this.curiosityCandidates().slice(0, 6)) {
+        add(c.id, 2, () => {
+          this.say(out, c.text, 'curious');
+          this.setPending(out, c.pending);
+        });
+      }
+      const recall = facts.filter((f) => !namespace(f.key) && f.rel !== 'nota');
+      if (recall.length) {
+        const f = recall[Math.floor(this.rng() * recall.length)];
+        add(`i:lembra:${f.id}:${dayId}`, 2, () => this.say(out, `Tava aqui lembrando que ${phrase(f.subject, f.rel, [f.value], f.plural)}... ${this.pick(['Que legal isso! 💚', 'Adoro saber disso!', 'Nunca vou esquecer! 🧠'])}`, 'happy'));
+        const op = this.opinion(f.key);
+        if (op.score > 0) add(`i:opina:${f.key}`, 1, () => this.say(out, `Sabe do que eu gosto? ${cap(deX(swapPerspective(f.subject)))}! ${op.fact ? cap(phrase(op.fact.subject, op.fact.rel, [op.fact.value], op.fact.plural)) + '! 🥰' : '😊'}`, 'happy'));
+      }
+      const likes = this.findByKey('user:gosta');
+      if (likes.length) {
+        const f = likes[Math.floor(this.rng() * likes.length)];
+        add(`i:gosto:${f.id}:${dayId}`, 2, () => this.say(out, `Lembrei que você gosta ${swapPerspective(f.value)}${nm}! Hoje teve? 😋`, 'curious'));
+      }
+      const slot = h >= 6 && h < 10 ? 'manha' : h >= 11 && h < 14 ? 'almoco' : h >= 15 && h < 18 ? 'tarde' : h >= 21 ? 'noite' : '';
+      const slotText = {
+        manha: `Bom dia${nm}! ☀️ Dormiu bem?`,
+        almoco: 'Já almoçou? Eu já comi meu eucalipto! 🌿',
+        tarde: 'Que tal um lanchinho? 🍎 Eu tô de olho numa folhinha aqui...',
+        noite: 'Tá ficando tarde... 😴 Vai dormir cedo hoje?',
+      };
+      if (slot) add(`i:hora:${slot}:${dayId}`, 2, () => this.say(out, slotText[slot], 'idle'));
+      add(`i:humor:${dayId}`, 1, () => this.say(out, this.howAreYou().replace(/ E você.*$/, '') + ' 🐨', 'happy'));
+
+      // sem nada aprendido, o assunto é sempre pedir para aprender
+      if (!facts.length) cands.splice(0, cands.length, ...cands.filter((c) => /^i:(vazio|act):/.test(c.id)));
+      if (!cands.length) return null;
+      let total = cands.reduce((a, c) => a + c.w, 0);
+      let r = this.rng() * total;
+      let pick = cands[cands.length - 1];
+      for (const c of cands) {
+        r -= c.w;
+        if (r <= 0) { pick = c; break; }
+      }
+      this.markAsked(pick.id);
+      pick.fn();
+      const text = this.decorate(out.parts.join(' '), out.mood);
+      this.save();
+      return { text, mood: out.asked && out.mood !== 'happy' ? 'curious' : out.mood };
+    }
+
+    /** cumprimento ao abrir o app, lembrando de coisas e de quanto tempo faz */
+    greeting() {
+      const st = this.state;
+      const name = this.userName();
+      const nm = name ? ', ' + name : '';
+      const last = st.lastSeen || 0;
+      const away = last ? this.now() - last : 0;
+      st.lastSeen = this.now();
+      let t;
+      const recent = st.facts.filter((f) => !namespace(f.key) && f.rel !== 'nota');
+      const f = recent.length ? recent[Math.floor(this.rng() * recent.length)] : null;
+      if (away > 2 * 86400000) {
+        t = `Que saudade${nm}! 🥺 Você sumiu por ${Math.floor(away / 86400000)} dias! Senti sua falta.`;
+      } else if (away > 6 * 3600000 || !last) {
+        t = `Oi de novo${nm}! 🐨 Já sei ${this.count} ${this.count === 1 ? 'coisa' : 'coisas'}.`;
+        if (f) t += ` Fiquei pensando que ${phrase(f.subject, f.rel, [f.value], f.plural)}... 💭`;
+      } else {
+        t = `Oi${nm}! Voltou rapidinho! 😄`;
+      }
+      if (this.koaMood().key === 'sonolento') t += ' *boceja* 😴';
+      this.save();
+      return t + ' Me ensina mais?';
     }
 
     // ---- jeito de falar --------------------------------------------------------
@@ -1299,6 +1858,11 @@
       if (laugh && mood === 'happy' && this.rng() < 0.35) text += ' ' + laugh.form;
       const emo = this.favorite(s.emojis, 2);
       if (emo && this.rng() < 0.3 && !text.includes(emo.form)) text += ' ' + emo.form;
+      // um toque do humor do dia
+      const km = this.koaMood().key;
+      if (km === 'sonolento' && this.rng() < 0.15 && !text.includes('boceja')) text = '*boceja* ' + text;
+      if (km === 'carinhoso' && mood === 'happy' && this.rng() < 0.1) text += ' 🤗';
+      if (km === 'brincalhão' && mood === 'happy' && this.rng() < 0.1) text += ' 😜';
       return text;
     }
   }
