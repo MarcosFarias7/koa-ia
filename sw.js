@@ -1,6 +1,6 @@
 /* sw.js — service worker simples: guarda os arquivos para o Koa funcionar offline.
  * Ao mudar qualquer arquivo do app, aumente a VERSION para atualizar o cache. */
-const VERSION = 'koa-v4';
+const VERSION = 'koa-v5';
 const ASSETS = [
   './',
   'index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   'brain.js',
   'koala.svg.js',
   'llm.js',
+  'research.js',
   'world3d.js',
   'manifest.webmanifest',
   'icons/icon.svg',

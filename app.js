@@ -192,17 +192,48 @@
     addMsg('koa', reply.text);
     await typeInBubble(reply.text);
 
-    if (reply.levelUp) {
-      const lv = reply.levelUp;
-      celebrate();
-      toast(`🎉 Nível ${lv.level}: ${lv.name}!`);
-      KoaKoala.setMood('happy', 3500, after);
-      const msg = `Subi de nível! Agora eu sou um ${lv.name}! 🎉 Obrigado por me ensinar ${plural(brain.count)}.`;
-      addMsg('koa', msg);
-      setTimeout(() => typeInBubble(msg), 900);
-    }
+    if (reply.levelUp) showLevelUp(reply.levelUp, after);
+    if (reply.research) await doResearch(reply.research, text);
     renderLevel();
     busy = false;
+  }
+
+  function showLevelUp(lv, after) {
+    celebrate();
+    toast(`🎉 Nível ${lv.level}: ${lv.name}!`);
+    KoaKoala.setMood('happy', 3500, after);
+    const msg = `Subi de nível! Agora eu sou um ${lv.name}! 🎉 Obrigado por me ensinar ${plural(brain.count)}.`;
+    addMsg('koa', msg);
+    setTimeout(() => typeInBubble(msg), 900);
+  }
+
+  // ---------- pesquisa sozinho (Wikipédia) ----------
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function updateOnline() {
+    brain.canResearch = navigator.onLine !== false && !!window.KoaResearch;
+  }
+  window.addEventListener('online', updateOnline);
+  window.addEventListener('offline', updateOnline);
+  updateOnline();
+
+  /** o Koa disse "vou pesquisar": busca, aprende e conta o que achou */
+  async function doResearch(req, userText, quiet) {
+    await sleep(reducedMotion.matches ? 100 : 700);
+    if (!quiet) KoaKoala.setMood('thinking'); // quieto = por iniciativa própria, sem interromper o passeio
+    showTyping();
+    const offline = navigator.onLine === false;
+    const [found] = await Promise.all([offline ? null : KoaResearch.lookup(req.subject), sleep(reducedMotion.matches ? 100 : 900)]);
+    const res = found ? brain.learnResearch(Object.assign({}, req, found)) : brain.researchFailed(Object.assign({ offline }, req));
+    if (KoaLLM.isActive()) {
+      const polished = await KoaLLM.polish({ brain, history, userText: userText || req.subject, draft: res.text });
+      if (polished.usedLLM) res.text = polished.text;
+    }
+    const after = brain.state.pending ? 'curious' : 'idle';
+    KoaKoala.setMood(res.mood, res.mood === after ? 0 : 2600, after);
+    addMsg('koa', res.text);
+    await typeInBubble(res.text);
+    if (res.levelUp) showLevelUp(res.levelUp, after);
+    renderLevel();
   }
 
   function updateSend() {
@@ -263,7 +294,8 @@
     li.className = 'fact';
     const span = document.createElement('span');
     span.className = 'fact-text';
-    span.textContent = brain.describe(f);
+    span.textContent = (f.source === 'wiki' ? '🔎 ' : '') + brain.describe(f);
+    if (f.source === 'wiki') span.title = 'O Koa pesquisou isso sozinho na Wikipédia';
     const edit = document.createElement('button');
     edit.type = 'button';
     edit.className = 'fact-btn';
@@ -539,6 +571,7 @@
     KoaKoala.setMood(r.mood || 'idle', 2600, after);
     addMsg('koa', text);
     await typeInBubble(text);
+    if (r.research) await doResearch(r.research, '', true);
     busy = false;
     scheduleInitiative();
   }

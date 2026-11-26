@@ -13,7 +13,7 @@ Web app em JavaScript puro, sem servidor e sem dependências para instalar, feit
 ![JavaScript](https://img.shields.io/badge/JavaScript-puro-f7df1e?logo=javascript&logoColor=black)
 ![Three.js](https://img.shields.io/badge/Three.js-3D-000000?logo=threedotjs)
 ![PWA](https://img.shields.io/badge/PWA-offline-5a0fc8?logo=pwa)
-![Testes](https://img.shields.io/badge/testes-56_passando-3f8a62)
+![Testes](https://img.shields.io/badge/testes-63_passando-3f8a62)
 
 <br>
 
@@ -28,11 +28,12 @@ Web app em JavaScript puro, sem servidor e sem dependências para instalar, feit
 ## ✨ O que ele faz
 
 - 🧠 **Aprende conversando.** Entende frases como "o céu é azul", "meu nome é Ana" ou "eu gosto de chocolate" e guarda tudo na memória.
-- 🤔 **Pergunta quando não sabe.** Se você perguntar algo novo, ele pede para você ensinar, e a próxima resposta vira conhecimento.
+- 🔎 **Pesquisa sozinho.** Se você perguntar algo que ele não sabe, como "o que é um ornitorrinco?", ele pesquisa na Wikipédia em português e aprende. Quando fica curioso com alguma palavra da conversa, também pesquisa por conta própria.
+- 🤔 **Pergunta quando não sabe.** Sem internet, ou quando o assunto é você, ele pede para você ensinar, e a próxima resposta vira conhecimento.
 - ✏️ **Aceita correção.** "Não, na verdade é verde" atualiza o que ele sabia e ele agradece.
 - 💬 **Pega o seu jeito de falar.** Aos poucos, passa a usar as expressões, as risadas e os emojis que você mais usa.
 - 💭 **Pensa sozinho.** Liga os pontos: se "o gato é um animal" e "animal respira", ele conclui que o gato respira, sem ninguém ensinar.
-- 🔎 **Responde ao contrário.** "Quem tem bigode?", "quem mia?", "o que é azul?": ele procura nas coisas que sabe.
+- ↩️ **Responde ao contrário.** "Quem tem bigode?", "quem mia?", "o que é azul?": ele procura nas coisas que sabe.
 - 🗨️ **Puxa assunto.** Se você fica quieta, ele lembra de algo que aprendeu, faz uma pergunta curiosa ou conta o que andou fazendo na ilha.
 - 🐨 **Tem personalidade.** Gosta de eucalipto e soneca, tem medo de fogo, forma opinião sobre o que aprende e muda de humor com a hora e o dia.
 - 🧮 **Faz contas e sabe as horas.** "Quanto é 2+3×4?", "que horas são?", "que dia é hoje?".
@@ -65,7 +66,7 @@ Depois pergunte: `o que é um gato?`, `qual é o meu nome?`, `do que eu gosto?`,
 
 ## 🔒 Privacidade
 
-O Koa não tem servidor, então o que você ensina fica guardado só no seu aparelho. O botão **Exportar** cria um backup em `.json`.
+O Koa não tem servidor, então o que você ensina fica guardado só no seu aparelho. Quando ele pesquisa algo, só a palavra pesquisada vai para a Wikipédia; ele nunca pesquisa nada sobre você. O botão **Exportar** cria um backup em `.json`.
 O cérebro avançado é opcional. Quando você liga, as mensagens vão só para `api.anthropic.com`, e a chave nunca entra no backup.
 
 ## 🛠️ Como funciona por dentro
@@ -76,6 +77,7 @@ O cérebro avançado é opcional. Quando você liga, as mensagens vão só para 
 | [`world3d.js`](world3d.js) | O mundo 3D com Three.js: ilha, eucalipto, céu que muda com a hora, o coala 3D com as expressões e o jardim que cresce |
 | [`koala.svg.js`](koala.svg.js) | O coala 2D em SVG, usado quando o 3D não está disponível |
 | [`app.js`](app.js) | A interface: conversa, balão com efeito de digitação, níveis, tela de memória e ajuste ao teclado do iPhone |
+| [`research.js`](research.js) | A pesquisa sozinho na Wikipédia em português (API pública, sem chave) |
 | [`llm.js`](llm.js) | O cérebro avançado opcional, que chama a API do Claude |
 | [`sw.js`](sw.js) | O service worker que faz o app funcionar offline |
 
@@ -85,7 +87,7 @@ O cérebro avançado é opcional. Quando você liga, as mensagens vão só para 
 git clone https://github.com/MarcosFarias7/koa-ia.git
 cd koa-ia
 python -m http.server 8140      # depois abra http://localhost:8140
-node tests/brain.test.js        # 56 testes do cérebro, sem dependências
+node tests/brain.test.js        # 63 testes do cérebro, sem dependências
 ```
 
 ---

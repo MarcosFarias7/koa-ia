@@ -242,7 +242,7 @@
     ['ama', 'amam', 'amo'], ['adora', 'adoram', 'adoro'], ['odeia', 'odeiam', 'odeio'],
     ['produz', 'produzem', 'produzo'], ['bebe', 'bebem', 'bebo'], ['protege', 'protegem', 'protejo'],
     ['parece', 'parecem', 'pareço'], ['vira', 'viram', 'viro'], ['sabe', 'sabem', 'sei'],
-    ['tem medo de', 'têm medo de', 'tenho medo de'],
+    ['tem medo de', 'têm medo de', 'tenho medo de'], ['foi', 'foram', 'fui'],
   ];
   for (const [s, p] of EXTRA_VERBS) {
     VERBS[s] = { rel: s, plural: false };
@@ -466,6 +466,7 @@
       this.rng = opts.rng || Math.random;
       this.now = opts.now || (() => Date.now());
       this.seq = 0;
+      this.canResearch = !!opts.canResearch; // o app liga quando há internet
       this.state = emptyState();
       this.load();
     }
@@ -586,6 +587,7 @@
           createdAt: Number(f.createdAt) || this.now(),
           updatedAt: Number(f.updatedAt) || this.now(),
           uses: Number(f.uses) || 0,
+          ...(f.source === 'wiki' ? { source: 'wiki' } : {}),
         });
       }
       const next = Object.assign(emptyState(), st, { facts, pending: null });
@@ -639,6 +641,11 @@
       }
       this.state.lastSeen = this.now();
 
+      return this.finish(out, levelBefore);
+    }
+
+    /** monta o resultado de uma fala do Koa */
+    finish(out, levelBefore) {
       let mood = out.mood;
       if (out.learned || out.changed) mood = 'happy';
       else if (out.asked && mood !== 'confused') mood = 'curious';
@@ -649,7 +656,68 @@
       const levelNow = this.levelInfo();
       const levelUp = levelNow.index > levelBefore ? levelNow : null;
       this.save();
-      return { text: reply, mood, learned: out.learned > 0, count: this.count, level: levelNow, levelUp };
+      const r = { text: reply, mood, learned: out.learned > 0, count: this.count, level: levelNow, levelUp };
+      if (out.research) r.research = out.research;
+      return r;
+    }
+
+    // ---- pesquisa sozinho (Wikipédia) -----------------------------------------
+    /** dá para pesquisar isso? (nunca coisas sobre a pessoa ou sobre o Koa) */
+    researchable(key, rel) {
+      if (!this.canResearch || !key || namespace(key)) return false;
+      if (rel && !['é', 'nota', 'chama', 'significa'].includes(rel)) return false;
+      return key.length >= 2 && wordCount(key) <= 5 && !/^\d+$/.test(key);
+    }
+
+    /** transforma a frase da Wikipédia em um fato: "X é um mamífero..." -> é / "um mamífero..." */
+    definitionFrom(sentence) {
+      const s = String(sentence).replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+      const m = s.match(/\s(é|são|foi|era|eram|foram|constitui|constituem|representa|representam|designa|designam|refere-se\s+a|referem-se\s+a)\s/iu);
+      if (!m) return { rel: 'nota', value: cleanValue(s), plural: false };
+      let v = s.slice(m.index + m[0].length).trim();
+      // corta na primeira vírgula quando a frase for comprida
+      const comma = v.indexOf(',');
+      if (v.length > 90 && comma > 15) v = v.slice(0, comma);
+      if (v.length > 160) v = v.slice(0, 160).replace(/\s+\S*$/, '') + '…';
+      const verb = m[1].toLowerCase();
+      const past = /^(foi|era|eram|foram)$/.test(verb); // "Santos Dumont foi um inventor"
+      return { rel: past ? 'foi' : 'é', value: cleanValue(v), plural: /^(são|eram|foram|constituem|representam|designam|referem)/.test(verb) };
+    }
+
+    /** o app pesquisou e achou: o Koa aprende e conta */
+    learnResearch(r) {
+      const levelBefore = this.levelInfo().index;
+      const out = { parts: [], mood: 'idle', learned: 0, changed: 0, answered: false, asked: false };
+      const d = this.definitionFrom(r.sentence);
+      let subject = cleanSubject(r.subject);
+      // usa o título da Wikipédia quando é o mesmo nome (mantém maiúsculas: "Santos Dumont")
+      if (r.title && normalize(r.title) === normalize(subject)) subject = r.title;
+      else if (r.title && /^\p{Lu}/u.test(r.title) && normalize(r.title).split(' ').length > 1 && normalize(r.title).includes(normalize(subject))) subject = r.title;
+      // "Dinossauros são..." mas ela perguntou "o que é um dinossauro": concorda com o assunto dela
+      d.plural = d.plural && /s$/i.test(normalize(subject));
+      const res = d.value ? this.learn({ subject, key: r.key, rel: d.rel, value: d.value, plural: d.plural, source: 'wiki' }) : null;
+      if (res && res.status === 'new') {
+        out.learned++;
+        const p = phrase(res.fact.subject, res.fact.rel, [res.fact.value], res.fact.plural);
+        this.say(out, `${this.pick(['Pesquisei! 🔎', 'Fui pesquisar e descobri:', 'Achei na Wikipédia!'])} ${cap(p)}! ${this.pick(['🤯', '✨', '🤓', '🌿'])}`, 'happy');
+        this.maybeThink(out, new Set([r.key]));
+      } else if (res) {
+        this.say(out, `Pesquisei e confirmei: ${phrase(res.fact.subject, res.fact.rel, [res.fact.value], res.fact.plural)}! 🤓`, 'happy');
+      } else {
+        return this.researchFailed(r);
+      }
+      this.state.lastSubject = { key: r.key, subject: res.fact.subject, rel: res.fact.rel };
+      return this.finish(out, levelBefore);
+    }
+
+    /** não achou (ou sem internet): volta a pedir para ensinar */
+    researchFailed(r) {
+      const levelBefore = this.levelInfo().index;
+      const out = { parts: [], mood: 'idle', learned: 0, changed: 0, answered: false, asked: false };
+      const s = swapPerspective(cleanSubject(r.subject));
+      this.say(out, r.offline ? `Sem internet não consigo pesquisar... 😅 Me ensina o que é ${s}?` : `Procurei, mas não achei nada sobre ${s}... 😅 Me ensina o que é?`, 'curious');
+      this.setPending(out, { type: 'teach', subject: cleanSubject(r.subject), key: r.key, rel: 'é' });
+      return this.finish(out, levelBefore);
     }
 
     say(out, text, mood) {
@@ -1021,6 +1089,7 @@
         updatedAt: now,
         uses: 0,
       };
+      if (f.source) fact.source = f.source; // 'wiki' = pesquisou sozinho
       this.state.facts.push(fact);
       return { status: 'new', fact };
     }
@@ -1043,6 +1112,8 @@
           this.say(out, `Prazer em te conhecer, ${f.value}! 💚 Vou guardar seu nome no meu coraçãozinho.`, 'happy');
         } else if (f.key === 'koa:self') {
           this.say(out, `Eu ${verbFor(f.rel, 'eu')} ${joinPt(news.map((r) => swapPerspective(r.fact.value)))}? Own, obrigado! 🥰 Vou lembrar disso.`, 'happy');
+        } else if (f.rel === 'nota') {
+          this.say(out, `Anotado! ${cap(list(news))}. 📝`, 'happy');
         } else {
           const p = list(news);
           this.say(out, this.pick([
@@ -1196,6 +1267,21 @@
       const st = this.parseStatement(c);
       if (st) return this.yesNo(st, out);
 
+      // pergunta que não entendi, mas fala de algo que conheço: conta o que sabe e pede a resposta
+      const toks = new Set(keyOf(c).split(' '));
+      let best = null;
+      for (const f of this.state.facts) {
+        if (namespace(f.key)) continue;
+        if (f.key.split(' ').every((t) => toks.has(t)) && (!best || f.key.length > best.key.length)) best = f;
+      }
+      if (best) {
+        this.say(out, `Hmm, isso eu não sei... Mas o que eu sei é: ${this.compose(this.findByKey(best.key))} Me conta a resposta? 🤔`, 'curious');
+        const subjRe = new RegExp('^(?:(?:o|a|os|as)\\s+)?' + best.subject.replace(/^(?:o|a|os|as)\s+/iu, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+', 'iu');
+        const q = c.replace(subjRe, '');
+        this.setPending(out, { type: 'teach', subject: best.subject, key: best.key, rel: 'nota', prefix: (q !== c ? q : c) + '? ' });
+        return;
+      }
+
       this.say(out, this.pick([
         'Hmm... essa eu não sei responder ainda. 🤔 Me ensina alguma coisa sobre isso?',
         'Ih, não entendi a pergunta... 😅 Tenta perguntar tipo "o que é um gato?"',
@@ -1250,6 +1336,16 @@
         const altSubj = swapPerspective(facts[0].subject);
         this.say(out, `Hmm, não conheço "${swapPerspective(subject)}"... Você quis dizer "${altSubj}"? ${this.compose(facts)} Se for outra coisa, me ensina ${ask}! 🤔`, 'curious');
         this.setPending(out, { type: 'teach', subject, key, rel: mainRel === 'nota' ? 'é' : mainRel, alt: fz.key });
+        return;
+      }
+      if (this.researchable(key, mainRel) && !out.research) {
+        // não sabe: vai pesquisar sozinho (o app faz a busca e chama learnResearch)
+        this.say(out, this.pick([
+          `Hmm, não sei ${ask}... vou pesquisar! 🔎`,
+          `Essa eu não sei ainda! Peraí que vou pesquisar... 🔎`,
+          `${cap(ask)}? Deixa eu pesquisar rapidinho! 🔎`,
+        ]), 'curious');
+        out.research = { subject, key, rel: 'é' };
         return;
       }
       this.say(out, this.pick([
@@ -1729,7 +1825,24 @@
       if (ded) {
         add('d:' + ded.id, 3, () => this.say(out, `Ei, sabe o que eu pensei sozinho? 💭 Se ${ded.because}, então ${ded.result}!`, 'happy'));
       }
-      for (const c of this.curiosityCandidates().slice(0, 6)) {
+      // curiosidade própria: pesquisa sozinho algo que apareceu na conversa e ele não conhece
+      if (this.canResearch) {
+        for (const c of this.curiosityCandidates().filter((x) => x.id.startsWith('v:')).slice(0, 3)) {
+          const p = c.pending;
+          if (!this.researchable(p.key, 'é')) continue;
+          add('i:pesq:' + p.key, 3, () => {
+            this.markAsked(c.id);
+            this.say(out, this.pick([
+              `Fiquei curioso sobre ${swapPerspective(p.subject)} e fui pesquisar... 🔎`,
+              `Sabe aquilo de ${swapPerspective(p.subject)}? Vou pesquisar o que é! 🔎`,
+            ]), 'curious');
+            out.research = { subject: p.subject, key: p.key, rel: 'é' };
+          });
+        }
+      }
+      // (o que dá para pesquisar ele pesquisa em vez de perguntar)
+      const askable = this.curiosityCandidates().filter((x) => !(this.canResearch && x.id.startsWith('v:') && this.researchable(x.pending.key, 'é')));
+      for (const c of askable.slice(0, 6)) {
         add(c.id, 2, () => {
           this.say(out, c.text, 'curious');
           this.setPending(out, c.pending);
@@ -1771,7 +1884,9 @@
       pick.fn();
       const text = this.decorate(out.parts.join(' '), out.mood);
       this.save();
-      return { text, mood: out.asked && out.mood !== 'happy' ? 'curious' : out.mood };
+      const result = { text, mood: out.asked && out.mood !== 'happy' ? 'curious' : out.mood };
+      if (out.research) result.research = out.research;
+      return result;
     }
 
     /** cumprimento ao abrir o app, lembrando de coisas e de quanto tempo faz */

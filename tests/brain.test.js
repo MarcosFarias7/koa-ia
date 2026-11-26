@@ -348,6 +348,58 @@ test('cumprimento lembra do tempo longe', () => {
   assert.match(b.greeting(), /rapidinho/);
 });
 
+console.log('\nPesquisa sozinho');
+test('sem internet ligada, continua pedindo para ensinar', () => {
+  const b = brain();
+  const r = b.respond('o que é um ornitorrinco?');
+  assert.equal(r.research, undefined);
+  assert.ok(b.state.pending);
+});
+test('pede pesquisa quando não sabe, e aprende o resultado', () => {
+  const b = brain({ canResearch: true });
+  const r = b.respond('o que é um ornitorrinco?');
+  assert.match(r.text, /pesquis/);
+  assert.equal(r.research.key, 'ornitorrinco');
+  const r2 = b.learnResearch(Object.assign({ sentence: 'O ornitorrinco é um mamífero semiaquático natural da Austrália e Tasmânia.' }, r.research));
+  assert.match(r2.text, /ornitorrinco é um mamífero semiaquático/i);
+  assert.ok(r2.learned);
+  assert.equal(b.facts[0].source, 'wiki');
+  assert.match(ask(b, 'o que é ornitorrinco?'), /mamífero/);
+});
+test('frase longa da Wikipédia vira um fato curto', () => {
+  const b = brain();
+  const d = b.definitionFrom('Brasil, oficialmente República Federativa do Brasil, é o maior país da América do Sul e da região da América Latina, sendo o quinto maior do mundo em área territorial.');
+  assert.equal(d.rel, 'é');
+  assert.equal(d.value, 'o maior país da América do Sul e da região da América Latina');
+  assert.equal(b.definitionFrom('Dinossauros constituem um grupo de répteis.').value, 'um grupo de répteis');
+});
+test('nunca pesquisa coisas sobre a pessoa nem sobre o Koa', () => {
+  const b = brain({ canResearch: true });
+  assert.equal(b.respond('qual é o meu nome?').research, undefined);
+  assert.equal(b.respond('o que é minha avó?').research, undefined);
+  assert.equal(b.researchable('koa:self', 'é'), false);
+});
+test('o que ela ensinou vale mais: não pesquisa o que já sabe', () => {
+  const b = brain({ canResearch: true });
+  b.respond('o gato é um bichinho fofo');
+  assert.equal(b.respond('o que é um gato?').research, undefined);
+});
+test('pesquisa que falha volta a pedir para ensinar', () => {
+  const b = brain({ canResearch: true });
+  const r = b.respond('o que é xyzzy?');
+  const r2 = b.researchFailed(r.research);
+  assert.match(r2.text, /não achei|ensina/i);
+  b.respond('uma palavra inventada');
+  assert.equal(b.count, 1);
+});
+test('a pesquisa junta com a dedução', () => {
+  const b = brain({ canResearch: true });
+  b.respond('mamífero tem pelo');
+  const r = b.respond('o que é um ornitorrinco?');
+  const r2 = b.learnResearch(Object.assign({ sentence: 'O ornitorrinco é um mamífero semiaquático.' }, r.research));
+  assert.match(r2.text, /ornitorrinco tem pelo/);
+});
+
 console.log('\nNível, estilo, persistência');
 test('sobe de nível no marco de 10', () => {
   const b = brain();
