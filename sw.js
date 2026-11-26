@@ -1,6 +1,6 @@
 /* sw.js — service worker simples: guarda os arquivos para o Koa funcionar offline.
  * Ao mudar qualquer arquivo do app, aumente a VERSION para atualizar o cache. */
-const VERSION = 'koa-v5';
+const VERSION = 'koa-v6';
 const ASSETS = [
   './',
   'index.html',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
 // Bibliotecas de CDN com versão fixa (Three.js do mundo 3D): guarda na primeira vez.
 const CDN = 'https://cdn.jsdelivr.net';
 
-// Responde do cache na hora e atualiza em segundo plano (stale-while-revalidate).
+// Arquivos do app
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -52,21 +52,23 @@ self.addEventListener('fetch', (event) => {
   }
   if (origin !== self.location.origin) return;
 
+  // Rede primeiro: com internet, sempre pega a versão mais nova do Koa.
+  // Sem internet (ou se a rede demorar mais de 4s), usa a cópia guardada.
   event.respondWith(
     caches.open(VERSION).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
+      const network = fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res && res.ok) cache.put(req, res.clone());
           return res;
         })
         .catch(() => null);
-      if (cached) {
-        event.waitUntil(network);
-        return cached;
-      }
-      const res = await network;
+      const slow = new Promise((r) => setTimeout(() => r(null), 4000));
+      const res = await Promise.race([network, slow]);
       if (res) return res;
+      const cached = await cache.match(req, { ignoreSearch: true });
+      if (cached) return cached;
+      const late = await network;
+      if (late) return late;
       if (req.mode === 'navigate') return cache.match('index.html');
       return new Response('', { status: 504, statusText: 'offline' });
     })

@@ -1289,10 +1289,28 @@
     }
 
     answerAbout(subject, rels, out, quem) {
-      const key = subjectKey(subject);
+      let key = subjectKey(subject);
       if (!key) return this.fallback(subject, out);
       if (key === 'koa:self') return this.aboutKoa(out);
       const mainRel = (rels && rels[0]) || 'é';
+      // perguntaram sobre coalas: ele mesmo é um!
+      if (/^(coala|koala)$/.test(key) && !out.koalaSelf) {
+        out.koalaSelf = true;
+        this.say(out, 'Coala? Eu sou um coala! 🐨💚', 'happy');
+        if (!this.findByKey(key).length && !this.findByKey(key === 'coala' ? 'koala' : 'coala').length) {
+          if (this.researchable('coala', 'é')) {
+            this.say(out, 'Mas quero saber mais sobre a minha espécie... vou pesquisar! 🔎', 'curious');
+            out.research = { subject: 'coala', key: 'coala', rel: 'é' };
+          } else {
+            this.say(out, 'Sei que adoro eucalipto e soneca! Mas me conta mais sobre os coalas?', 'curious');
+            this.setPending(out, { type: 'teach', subject: 'coala', key: 'coala', rel: 'é' });
+          }
+          return;
+        }
+        key = key === 'koala' && this.findByKey('coala').length ? 'coala' : key;
+        out.answered = true;
+        return this.say(out, this.compose(this.findByKey(key)), 'happy');
+      }
       const ask = (ASK_TEXT[mainRel] || ASK_TEXT['é'])(swapPerspective(subject), quem);
       const all = this.findByKey(key);
       const hits = rels ? all.filter((f) => rels.includes(f.rel)) : all;
@@ -1326,7 +1344,14 @@
       }
       const rev = namespace(key) ? [] : this.reverseLookup(subject);
       if (rev.length) {
-        this.say(out, `Hmm, não sei ${ask} sozinho... Mas sei que ${rev.slice(0, 3).map((f) => phrase(f.subject, f.rel, [f.value], f.plural)).join('; ')}! Me ensina mais sobre ${swapPerspective(subject)}? 🤔`, 'curious');
+        const known = rev.slice(0, 3).map((f) => phrase(f.subject, f.rel, [f.value], f.plural)).join('; ');
+        if (this.researchable(key, mainRel)) {
+          // sabe algo relacionado, mas ainda assim vai pesquisar o que é
+          this.say(out, `Sei que ${known}... mas ${ask}? Vou pesquisar! 🔎`, 'curious');
+          out.research = { subject, key, rel: 'é' };
+          return;
+        }
+        this.say(out, `Hmm, não sei ${ask} sozinho... Mas sei que ${known}! Me ensina mais sobre ${swapPerspective(subject)}? 🤔`, 'curious');
         this.setPending(out, { type: 'teach', subject, key, rel: mainRel === 'nota' ? 'é' : mainRel });
         return;
       }

@@ -400,6 +400,22 @@ test('a pesquisa junta com a dedução', () => {
   assert.match(r2.text, /ornitorrinco tem pelo/);
 });
 
+test('perguntar sobre coalas: ele diz que é um e pesquisa a espécie', () => {
+  const b = brain({ canResearch: true });
+  const r = b.respond('o que você sabe sobre koalas?');
+  assert.match(r.text, /Eu sou um coala/);
+  assert.equal(r.research.key, 'coala');
+  b.learnResearch(Object.assign({ sentence: 'O Coala é um mamífero marsupial herbívoro nativo da Austrália.', title: 'Coala' }, r.research));
+  assert.match(ask(b, 'o que você sabe sobre coalas?'), /Eu sou um coala.*marsupial/);
+});
+test('sabe algo relacionado, mas ainda pesquisa o que é', () => {
+  const b = brain({ canResearch: true });
+  b.respond('o pinheiro é uma árvore');
+  const r = b.respond('o que é uma árvore?');
+  assert.match(r.text, /pinheiro é uma árvore.*pesquisar/);
+  assert.equal(r.research.key, 'arvore');
+});
+
 console.log('\nNível, estilo, persistência');
 test('sobe de nível no marco de 10', () => {
   const b = brain();
